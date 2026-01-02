@@ -83,6 +83,12 @@ type OrderRequest struct {
 
 	// Commits contains the commits being reviewed (for context).
 	Commits []git.Commit
+
+	// RepoContext contains repository analysis context (optional).
+	RepoContext string
+
+	// TestsFirst indicates tests should be shown before implementation.
+	TestsFirst bool
 }
 
 // OrderResponse contains the AI-determined ordering of files.
@@ -119,6 +125,8 @@ const (
 	CategoryConfig        = "config"
 	CategoryTest          = "test"
 	CategoryDocs          = "docs"
+	CategoryRouting       = "routing"
+	CategoryComponent     = "component"
 	CategoryOther         = "other"
 )
 

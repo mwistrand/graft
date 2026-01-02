@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/mwistrand/graft/internal/analysis"
 	"github.com/mwistrand/graft/internal/config"
 	"github.com/mwistrand/graft/internal/git"
 	"github.com/mwistrand/graft/internal/provider"
@@ -20,6 +23,9 @@ var (
 	providerName string
 	modelName    string
 	noDelta      bool
+	testsFirst   bool
+	refresh      bool
+	noAnalyze    bool
 )
 
 var reviewCmd = &cobra.Command{
@@ -46,6 +52,9 @@ func init() {
 	reviewCmd.Flags().StringVar(&providerName, "provider", "", "AI provider to use (default from config)")
 	reviewCmd.Flags().StringVar(&modelName, "model", "", "Model to use (default from config)")
 	reviewCmd.Flags().BoolVar(&noDelta, "no-delta", false, "Disable Delta rendering")
+	reviewCmd.Flags().BoolVar(&testsFirst, "tests-first", false, "Show test files before implementation")
+	reviewCmd.Flags().BoolVar(&refresh, "refresh", false, "Re-analyze repository structure")
+	reviewCmd.Flags().BoolVar(&noAnalyze, "no-analyze", false, "Skip repository analysis")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -102,6 +111,21 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Found %d changed files across %d commits\n\n",
 		len(diffResult.Files), len(diffResult.Commits))
+
+	// Get repository root for analysis
+	repoDir, err := repo.GetRootDir(ctx)
+	if err != nil {
+		return fmt.Errorf("getting repo root: %w", err)
+	}
+
+	// Repository analysis for smarter ordering
+	var repoContext string
+	if !noAnalyze && !skipOrdering {
+		repoContext, err = getRepoContext(repoDir)
+		if err != nil {
+			Verbose("Warning: failed to analyze repository: %v", err)
+		}
+	}
 
 	// Create renderer
 	renderOpts := render.DefaultOptions()
@@ -169,8 +193,10 @@ func runReview(cmd *cobra.Command, args []string) error {
 		fmt.Println("Determining review order...")
 
 		orderedFiles, err = aiProvider.OrderFiles(ctx, &provider.OrderRequest{
-			Files:   diffResult.Files,
-			Commits: diffResult.Commits,
+			Files:       diffResult.Files,
+			Commits:     diffResult.Commits,
+			RepoContext: repoContext,
+			TestsFirst:  testsFirst,
 		})
 		if err != nil {
 			fmt.Printf("Warning: Failed to determine order: %v\n", err)
@@ -187,8 +213,6 @@ func runReview(cmd *cobra.Command, args []string) error {
 	filesToReview := buildFileList(diffResult.Files, orderedFiles)
 
 	// Display diffs
-	repoDir, _ := repo.GetRootDir(ctx)
-
 	for i, file := range filesToReview {
 		if err := renderer.RenderFileHeader(&file, i+1, len(filesToReview)); err != nil {
 			return fmt.Errorf("rendering file header: %w", err)
@@ -318,5 +342,77 @@ func containsAny(s string, substrs ...string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// getRepoContext analyzes the repository and returns context for AI ordering.
+// Handles permission prompting and caching.
+func getRepoContext(repoDir string) (string, error) {
+	cache := analysis.NewCache(repoDir)
+
+	// Check if we have cached analysis
+	if !refresh && cache.Exists() {
+		cached, err := cache.Load()
+		if err != nil {
+			return "", err
+		}
+		if cached != nil {
+			Verbose("Using cached repository analysis")
+			return cached.FormatContext(), nil
+		}
+	}
+
+	// Need to run fresh analysis - prompt for permission if first time
+	if !cache.Exists() {
+		if !promptForAnalysisPermission() {
+			return "", nil // User declined, continue without analysis
+		}
+	} else if refresh {
+		fmt.Println("Refreshing repository analysis...")
+	}
+
+	// Run analysis
+	fmt.Println("Analyzing repository structure...")
+	result, isNew, err := analysis.GetOrAnalyze(repoDir, refresh)
+	if err != nil {
+		return "", err
+	}
+
+	if isNew {
+		fmt.Printf("Detected: %s", result.Type)
+		if len(result.Languages) > 0 {
+			fmt.Printf(" (%s)", strings.Join(result.Languages, ", "))
+		}
+		if len(result.Frameworks) > 0 {
+			fmt.Printf(" with %s", strings.Join(result.Frameworks, ", "))
+		}
+		fmt.Println()
+		fmt.Printf("Analysis cached at %s\n\n", cache.CachePath())
+	}
+
+	return result.FormatContext(), nil
+}
+
+// promptForAnalysisPermission asks the user if they want to analyze the repository.
+func promptForAnalysisPermission() bool {
+	fmt.Println("Graft can analyze your repository structure to provide smarter file ordering.")
+	fmt.Println("This scans directory structure and config files (not code contents).")
+	fmt.Println()
+	fmt.Print("Allow repository analysis? [Y/n] ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false
+	}
+
+	input = strings.TrimSpace(strings.ToLower(input))
+	// Default to yes if empty, or explicit yes
+	if input == "" || input == "y" || input == "yes" {
+		fmt.Println()
+		return true
+	}
+
+	fmt.Println("Skipping repository analysis.")
 	return false
 }

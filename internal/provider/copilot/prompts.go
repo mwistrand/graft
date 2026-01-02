@@ -90,11 +90,18 @@ Return ONLY valid JSON, no additional text.`)
 func buildOrderPrompt(req *provider.OrderRequest) string {
 	var b strings.Builder
 
-	b.WriteString(`You are an expert code reviewer determining the optimal order to review files in a pull request. Files should be ordered to maximize understanding - starting with entry points and high-level changes, then proceeding to implementation details.
+	b.WriteString(`You are an expert code reviewer determining the optimal order to review files in a pull request. Files should be ordered to maximize understanding.
 
-## Changed Files
 `)
 
+	// Include repository context if available
+	if req.RepoContext != "" {
+		b.WriteString("## Repository Context\n")
+		b.WriteString(req.RepoContext)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("## Changed Files\n")
 	for _, f := range req.Files {
 		status := f.Status
 		if f.OldPath != "" {
@@ -119,7 +126,7 @@ Determine the optimal review order. Respond with a JSON object in this exact for
   "files": [
     {
       "path": "path/to/file.go",
-      "category": "entry_point|business_logic|adapter|model|config|test|docs|other",
+      "category": "entry_point|business_logic|adapter|model|config|test|docs|routing|component|other",
       "priority": 1,
       "description": "Brief description of what this file does in the context of this PR"
     }
@@ -127,15 +134,40 @@ Determine the optimal review order. Respond with a JSON object in this exact for
   "reasoning": "Brief explanation of the ordering strategy used"
 }
 
-Ordering principles:
-1. Configuration and constants first (context-setting)
-2. Types/interfaces/models (understand the domain)
-3. Entry points (main.go, handlers, CLI commands, API routes)
-4. Core business logic (services, use cases)
-5. Adapters and integrations (databases, external services)
-6. Tests last (verify understanding)
+## Ordering Strategy
 
-Keep descriptions brief (under 15 words).
+Adapt your ordering based on the project type:
+
+**For frontend projects:**
+1. Routing (pages, routes)
+2. Container/smart components (state management)
+3. Presentational components (UI building blocks)
+4. Models/types (data shapes)
+5. Services (API clients, state stores)
+6. Tests
+
+**For backend projects:**
+1. Entry points (main, cmd, handlers)
+2. Routes/controllers (request handling)
+3. Business logic (services, use cases)
+4. Models/entities (data structures)
+5. Adapters (databases, external services)
+6. Tests
+
+**For fullstack/mixed projects:**
+1. Backend changes first (APIs shape frontend)
+2. Then frontend changes following the frontend ordering above
+3. Tests last
+
+`)
+
+	if req.TestsFirst {
+		b.WriteString(`**IMPORTANT:** The user has requested tests-first ordering. Place ALL test files at the BEGINNING of the review (priority 1-N) so the reviewer understands intent before seeing implementation.
+
+`)
+	}
+
+	b.WriteString(`Keep descriptions brief (under 15 words).
 Priority 1 = review first, higher numbers = later.
 Return ONLY valid JSON, no additional text.`)
 

@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 )
 
 // ProxyManager handles the lifecycle of the copilot-api proxy server.
 type ProxyManager struct {
 	baseURL string
+	mu      sync.Mutex
 	cmd     *exec.Cmd
 	started bool
 }
@@ -31,11 +33,20 @@ func (m *ProxyManager) EnsureRunning(ctx context.Context, logFn func(string, ...
 		return false, nil
 	}
 
+	m.mu.Lock()
+	// Double-check after acquiring lock
+	if m.cmd != nil {
+		m.mu.Unlock()
+		return false, nil
+	}
+
 	logFn("Starting copilot-api proxy...")
 
-	if err := m.Start(ctx); err != nil {
+	if err := m.startLocked(ctx); err != nil {
+		m.mu.Unlock()
 		return false, err
 	}
+	m.mu.Unlock()
 
 	logFn("Waiting for proxy to be ready (you may need to authenticate with GitHub)...")
 
@@ -69,6 +80,13 @@ func (m *ProxyManager) IsRunning(ctx context.Context) bool {
 
 // Start launches the copilot-api proxy as a subprocess.
 func (m *ProxyManager) Start(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.startLocked(ctx)
+}
+
+// startLocked launches the proxy (caller must hold mu).
+func (m *ProxyManager) startLocked(ctx context.Context) error {
 	if m.cmd != nil {
 		return nil
 	}
@@ -114,29 +132,37 @@ func (m *ProxyManager) WaitReady(ctx context.Context, timeout time.Duration) err
 
 // Stop terminates the proxy if it was started by this manager.
 func (m *ProxyManager) Stop() {
-	if m.cmd == nil || m.cmd.Process == nil {
+	m.mu.Lock()
+	cmd := m.cmd
+	if cmd == nil || cmd.Process == nil {
+		m.mu.Unlock()
 		return
 	}
+	m.mu.Unlock()
 
-	m.cmd.Process.Signal(os.Interrupt)
+	cmd.Process.Signal(os.Interrupt)
 
 	// Give it a moment to shut down gracefully
 	done := make(chan error, 1)
 	go func() {
-		done <- m.cmd.Wait()
+		done <- cmd.Wait()
 	}()
 
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
-		m.cmd.Process.Kill()
+		cmd.Process.Kill()
 	}
 
+	m.mu.Lock()
 	m.cmd = nil
 	m.started = false
+	m.mu.Unlock()
 }
 
 // WasStarted returns true if the proxy was started by this manager.
 func (m *ProxyManager) WasStarted() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.started
 }

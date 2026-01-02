@@ -28,6 +28,7 @@ func TestConfigSetGet(t *testing.T) {
 		{"model", "gpt-4"},
 		{"anthropic-api-key", "sk-ant-test123"},
 		{"openai-api-key", "sk-test456"},
+		{"copilot-base-url", "http://localhost:5000"},
 		{"delta-path", "/usr/local/bin/delta"},
 	}
 
@@ -102,6 +103,13 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid copilot config",
+			cfg: &Config{
+				Provider: "copilot",
+			},
+			wantErr: false,
+		},
+		{
 			name: "openai without api key",
 			cfg: &Config{
 				Provider: "openai",
@@ -136,7 +144,7 @@ func TestConfigValidate(t *testing.T) {
 
 func TestConfigEnvOverrides(t *testing.T) {
 	// Save and restore environment
-	envVars := []string{"GRAFT_PROVIDER", "GRAFT_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GRAFT_DELTA_PATH"}
+	envVars := []string{"GRAFT_PROVIDER", "GRAFT_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "COPILOT_BASE_URL", "GRAFT_DELTA_PATH"}
 	saved := make(map[string]string)
 	for _, v := range envVars {
 		saved[v] = os.Getenv(v)
@@ -156,6 +164,7 @@ func TestConfigEnvOverrides(t *testing.T) {
 	os.Setenv("GRAFT_MODEL", "gpt-4-turbo")
 	os.Setenv("ANTHROPIC_API_KEY", "env-anthropic-key")
 	os.Setenv("OPENAI_API_KEY", "env-openai-key")
+	os.Setenv("COPILOT_BASE_URL", "http://localhost:5000")
 	os.Setenv("GRAFT_DELTA_PATH", "/custom/delta")
 
 	cfg := DefaultConfig()
@@ -172,6 +181,9 @@ func TestConfigEnvOverrides(t *testing.T) {
 	}
 	if cfg.OpenAIAPIKey != "env-openai-key" {
 		t.Errorf("OpenAIAPIKey = %q, want %q", cfg.OpenAIAPIKey, "env-openai-key")
+	}
+	if cfg.CopilotBaseURL != "http://localhost:5000" {
+		t.Errorf("CopilotBaseURL = %q, want %q", cfg.CopilotBaseURL, "http://localhost:5000")
 	}
 	if cfg.DeltaPath != "/custom/delta" {
 		t.Errorf("DeltaPath = %q, want %q", cfg.DeltaPath, "/custom/delta")
