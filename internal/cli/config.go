@@ -13,13 +13,13 @@ var configCmd = &cobra.Command{
 	Long: `View and modify graft configuration.
 
 Available keys:
-  provider          AI provider to use (claude, openai)
+  provider          AI provider to use (claude, copilot)
   model             Model name for the selected provider
   anthropic-api-key API key for Claude/Anthropic
   openai-api-key    API key for OpenAI
+  copilot-base-url  URL of copilot-api proxy (default: http://localhost:4141)
   delta-path        Path to delta binary`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Show current config when run without subcommands
 		showConfig()
 	},
 }
@@ -100,7 +100,7 @@ func showConfig() {
 	fmt.Println("Current configuration:")
 	fmt.Println()
 
-	keys := []string{"provider", "model", "anthropic-api-key", "openai-api-key", "delta-path"}
+	keys := []string{"provider", "model", "anthropic-api-key", "openai-api-key", "copilot-base-url", "delta-path"}
 	for _, key := range keys {
 		value, _ := cfg.Get(key)
 		if value == "" {

@@ -10,7 +10,7 @@ import (
 
 // Config holds all configuration for the graft CLI.
 type Config struct {
-	// Provider specifies which AI provider to use (e.g., "claude", "openai").
+	// Provider specifies which AI provider to use (e.g., "claude", "copilot").
 	Provider string `json:"provider,omitempty"`
 
 	// Model specifies the model to use with the selected provider.
@@ -21,6 +21,9 @@ type Config struct {
 
 	// OpenAIAPIKey is the API key for the OpenAI provider.
 	OpenAIAPIKey string `json:"openai_api_key,omitempty"`
+
+	// CopilotBaseURL is the URL of the copilot-api proxy server.
+	CopilotBaseURL string `json:"copilot_base_url,omitempty"`
 
 	// DeltaPath is the path to the delta binary. If empty, uses PATH lookup.
 	DeltaPath string `json:"delta_path,omitempty"`
@@ -92,12 +95,15 @@ func (c *Config) Validate() error {
 		if c.AnthropicAPIKey == "" {
 			return errors.New("anthropic API key not set; run 'graft config set anthropic-api-key <key>' or set ANTHROPIC_API_KEY")
 		}
+	case "copilot":
+		// Copilot requires the copilot-api proxy to be running, no API key needed
+		return nil
 	case "openai":
 		if c.OpenAIAPIKey == "" {
 			return errors.New("openai API key not set; run 'graft config set openai-api-key <key>' or set OPENAI_API_KEY")
 		}
 	default:
-		return fmt.Errorf("unknown provider %q; available providers: claude, openai", c.Provider)
+		return fmt.Errorf("unknown provider %q; available providers: claude, copilot", c.Provider)
 	}
 	return nil
 }
@@ -116,6 +122,9 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 		c.OpenAIAPIKey = v
 	}
+	if v := os.Getenv("COPILOT_BASE_URL"); v != "" {
+		c.CopilotBaseURL = v
+	}
 	if v := os.Getenv("GRAFT_DELTA_PATH"); v != "" {
 		c.DeltaPath = v
 	}
@@ -132,6 +141,8 @@ func (c *Config) Set(key, value string) error {
 		c.AnthropicAPIKey = value
 	case "openai-api-key":
 		c.OpenAIAPIKey = value
+	case "copilot-base-url":
+		c.CopilotBaseURL = value
 	case "delta-path":
 		c.DeltaPath = value
 	default:
@@ -151,13 +162,14 @@ func (c *Config) Get(key string) (string, error) {
 		if c.AnthropicAPIKey == "" {
 			return "", nil
 		}
-		// Mask the API key for display
 		return maskAPIKey(c.AnthropicAPIKey), nil
 	case "openai-api-key":
 		if c.OpenAIAPIKey == "" {
 			return "", nil
 		}
 		return maskAPIKey(c.OpenAIAPIKey), nil
+	case "copilot-base-url":
+		return c.CopilotBaseURL, nil
 	case "delta-path":
 		return c.DeltaPath, nil
 	default:

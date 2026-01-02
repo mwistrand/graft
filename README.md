@@ -44,7 +44,9 @@ Files ordered by architectural flow: entry points first, then business logic, th
 - Go 1.21+
 - [Delta](https://github.com/dandavison/delta) (recommended for beautiful diffs)
 - Git
-- Claude API key from [Anthropic](https://console.anthropic.com/)
+- One of the following AI backends:
+  - Claude API key from [Anthropic](https://console.anthropic.com/)
+  - GitHub Copilot subscription with [copilot-api](https://github.com/ericc-ch/copilot-api) proxy
 
 ### From Source
 
@@ -76,6 +78,8 @@ sudo pacman -S git-delta
 
 ## Quick Start
 
+### Option A: Using Claude (default)
+
 1. **Set your API key:**
    ```bash
    graft config set anthropic-api-key sk-ant-...
@@ -83,15 +87,29 @@ sudo pacman -S git-delta
    export ANTHROPIC_API_KEY=sk-ant-...
    ```
 
-2. **Review a branch against main:**
+2. **Review a branch:**
    ```bash
    graft review main
    ```
 
-3. **That's it!** Graft will:
-   - Summarize what the changes do
-   - Determine the optimal review order
-   - Display diffs through Delta
+### Option B: Using GitHub Copilot
+
+1. **Start the copilot-api proxy:**
+   ```bash
+   npx copilot-api@latest start
+   ```
+
+2. **Set the provider:**
+   ```bash
+   graft config set provider copilot
+   ```
+
+3. **Review a branch:**
+   ```bash
+   graft review main
+   ```
+
+Graft will summarize changes, determine optimal review order, and display diffs through Delta.
 
 ## Usage
 
@@ -148,10 +166,10 @@ graft config path
 
 | Key | Description | Environment Variable |
 |-----|-------------|---------------------|
-| `provider` | AI provider (claude) | `GRAFT_PROVIDER` |
+| `provider` | AI provider (claude, copilot) | `GRAFT_PROVIDER` |
 | `model` | Model name | `GRAFT_MODEL` |
 | `anthropic-api-key` | Anthropic API key | `ANTHROPIC_API_KEY` |
-| `openai-api-key` | OpenAI API key (future) | `OPENAI_API_KEY` |
+| `copilot-base-url` | Copilot proxy URL (default: http://localhost:4141) | `COPILOT_BASE_URL` |
 | `delta-path` | Path to Delta binary | `GRAFT_DELTA_PATH` |
 
 ## How It Works
@@ -198,6 +216,7 @@ graft/
 │   ├── git/            # Git operations
 │   ├── provider/       # AI provider abstraction
 │   │   ├── claude/     # Claude implementation
+│   │   ├── copilot/    # Copilot implementation (via copilot-api proxy)
 │   │   └── mock/       # Mock for testing
 │   └── render/         # Output rendering
 ├── docs/               # Documentation

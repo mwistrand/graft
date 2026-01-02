@@ -9,6 +9,7 @@ import (
 	"github.com/mwistrand/graft/internal/git"
 	"github.com/mwistrand/graft/internal/provider"
 	"github.com/mwistrand/graft/internal/provider/claude"
+	"github.com/mwistrand/graft/internal/provider/copilot"
 	"github.com/mwistrand/graft/internal/render"
 	"github.com/spf13/cobra"
 )
@@ -114,15 +115,19 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// Initialize AI provider if needed
 	var aiProvider provider.Provider
+	var cleanup func()
 	if !skipSummary || !skipOrdering {
 		Verbose("Initializing AI provider...")
-		aiProvider, err = initProvider(cfg)
+		aiProvider, cleanup, err = initProvider(ctx, cfg)
 		if err != nil {
 			fmt.Printf("Warning: %v\n", err)
 			fmt.Println("Skipping AI analysis. Use --no-summary --no-order to suppress this warning.")
 			fmt.Println()
 			skipSummary = true
 			skipOrdering = true
+		}
+		if cleanup != nil {
+			defer cleanup()
 		}
 	}
 
@@ -200,14 +205,13 @@ func runReview(cmd *cobra.Command, args []string) error {
 }
 
 // initProvider creates an AI provider based on configuration.
-func initProvider(cfg *config.Config) (provider.Provider, error) {
-	// Determine which provider to use
+// Returns a cleanup function that should be called when done (may be nil).
+func initProvider(ctx context.Context, cfg *config.Config) (provider.Provider, func(), error) {
 	pName := providerName
 	if pName == "" {
 		pName = cfg.Provider
 	}
 
-	// Determine model
 	model := modelName
 	if model == "" {
 		model = cfg.Model
@@ -217,12 +221,38 @@ func initProvider(cfg *config.Config) (provider.Provider, error) {
 	case "claude", "":
 		apiKey := cfg.AnthropicAPIKey
 		if apiKey == "" {
-			return nil, fmt.Errorf("Anthropic API key not set. Run 'graft config set anthropic-api-key <key>' or set ANTHROPIC_API_KEY")
+			return nil, nil, fmt.Errorf("Anthropic API key not set. Run 'graft config set anthropic-api-key <key>' or set ANTHROPIC_API_KEY")
 		}
-		return claude.New(apiKey, model)
+		p, err := claude.New(apiKey, model)
+		return p, nil, err
+
+	case "copilot":
+		baseURL := cfg.CopilotBaseURL
+		p, err := copilot.New(baseURL, model)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Ensure the copilot-api proxy is running
+		started, err := p.EnsureProxyRunning(ctx, func(format string, args ...any) {
+			fmt.Printf(format+"\n", args...)
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("copilot proxy: %w", err)
+		}
+
+		// Return cleanup function if we started the proxy
+		var cleanup func()
+		if started {
+			cleanup = func() {
+				fmt.Println("Stopping copilot-api proxy...")
+				p.Close()
+			}
+		}
+		return p, cleanup, nil
 
 	default:
-		return nil, fmt.Errorf("unknown provider %q; available: claude", pName)
+		return nil, nil, fmt.Errorf("unknown provider %q; available: claude, copilot", pName)
 	}
 }
 
