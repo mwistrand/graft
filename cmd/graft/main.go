@@ -1,7 +1,22 @@
 package main
 
-import "fmt"
+import (
+	"os"
+
+	"github.com/mwistrand/graft/internal/cli"
+)
+
+// Build-time variables set via ldflags.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
-	fmt.Println("Hello, Graft World!")
+	cli.SetVersionInfo(version, commit, date)
+
+	if err := cli.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
