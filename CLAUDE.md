@@ -35,6 +35,7 @@ internal/
   config/            → Config loading from ~/.config/graft/config.json
   git/               → Git operations (shells out to git binary)
   analysis/          → Repository structure analysis for smarter ordering
+  prompt/            → Interactive terminal prompts
   provider/          → AI provider abstraction
     claude/          → Anthropic Claude API implementation
     copilot/         → GitHub Copilot via copilot-api proxy

@@ -94,22 +94,33 @@ sudo pacman -S git-delta
 
 ### Option B: Using GitHub Copilot
 
-1. **Start the copilot-api proxy:**
-   ```bash
-   npx copilot-api@latest start
-   ```
-
-2. **Set the provider:**
+1. **Set the provider:**
    ```bash
    graft config set provider copilot
    ```
 
-3. **Review a branch:**
+2. **Review a branch:**
    ```bash
    graft review main
    ```
 
-Graft will summarize changes, determine optimal review order, and display diffs through Delta.
+   On first run, graft will:
+   - Automatically start the copilot-api proxy (requires Node.js)
+   - Prompt you to authenticate with GitHub if needed
+   - Display an interactive model selector if no model is configured
+
+3. **Select a model** (if prompted):
+   ```
+   Select a model
+   Use arrow keys to navigate, enter to select
+
+   > gpt-4o
+     gpt-4
+     claude-3.5-sonnet
+     o1-mini
+   ```
+
+Graft will wait for your selection before proceeding with the review.
 
 ## Usage
 
@@ -141,9 +152,20 @@ graft review main --no-delta
 # Use a specific AI provider
 graft review main --provider claude
 
-# Use a specific model
-graft review main --model claude-sonnet-4-20250514
+# Use a specific model (skips interactive selection)
+graft review main --model gpt-4o
+
+# Show tests before implementation files
+graft review main --tests-first
 ```
+
+### Interactive Model Selection
+
+When using the Copilot provider without a configured model, graft displays an interactive model selector after the proxy is ready. The selector:
+
+- Lists all available models from the Copilot API
+- Waits indefinitely for your selection (no timeout)
+- Can be bypassed by setting a model via `--model` flag, config file, or `GRAFT_MODEL` environment variable
 
 ### Configuration
 
@@ -211,9 +233,11 @@ graft config path
 graft/
 ├── cmd/graft/          # Application entry point
 ├── internal/
+│   ├── analysis/       # Repository structure analysis
 │   ├── cli/            # Cobra CLI commands
 │   ├── config/         # Configuration management
 │   ├── git/            # Git operations
+│   ├── prompt/         # Interactive terminal prompts
 │   ├── provider/       # AI provider abstraction
 │   │   ├── claude/     # Claude implementation
 │   │   ├── copilot/    # Copilot implementation (via copilot-api proxy)

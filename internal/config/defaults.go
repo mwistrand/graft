@@ -25,6 +25,5 @@ const (
 func DefaultConfig() *Config {
 	return &Config{
 		Provider: DefaultProvider,
-		Model:    DefaultModel,
 	}
 }

@@ -130,6 +130,34 @@ const (
 	CategoryOther         = "other"
 )
 
+// ModelInfo describes an available AI model.
+type ModelInfo struct {
+	// ID is the model identifier to use in API calls.
+	ID string `json:"id"`
+
+	// Name is a human-readable display name (may equal ID if not provided).
+	Name string `json:"name,omitempty"`
+
+	// Description provides additional context about the model.
+	Description string `json:"description,omitempty"`
+}
+
+// ModelLister is an optional interface for providers that can list available models.
+// Use type assertion to check if a provider supports this: if lister, ok := p.(ModelLister); ok { ... }
+type ModelLister interface {
+	// ListModels returns the available models for this provider.
+	ListModels(ctx context.Context) ([]ModelInfo, error)
+}
+
+// ModelSelector is an optional interface for providers that allow changing the model after creation.
+type ModelSelector interface {
+	// SetModel updates the model used by this provider.
+	SetModel(model string)
+
+	// Model returns the currently configured model.
+	Model() string
+}
+
 // DefaultSummarizeOptions returns sensible defaults for summarization.
 func DefaultSummarizeOptions() SummarizeOptions {
 	return SummarizeOptions{

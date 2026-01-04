@@ -26,8 +26,8 @@ func TestNew(t *testing.T) {
 		t.Errorf("baseURL = %q, want %q", p.baseURL, DefaultBaseURL)
 	}
 
-	if p.model != DefaultModel {
-		t.Errorf("model = %q, want %q", p.model, DefaultModel)
+	if p.model != "" {
+		t.Errorf("model = %q, want empty string", p.model)
 	}
 }
 
@@ -284,7 +284,7 @@ func TestProxyManager_IsRunning(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"models": []}`))
+			w.Write([]byte(`{"data": [{"id": "gpt-4o", "object": "model"}]}`))
 		}
 	}))
 	defer server.Close()
@@ -499,4 +499,110 @@ func TestBuildOrderPrompt_EdgeCases(t *testing.T) {
 			t.Error("prompt should include old path for renamed files")
 		}
 	})
+}
+
+func TestListModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"data": [{"id": "gpt-4o", "object": "model"}, {"id": "gpt-4", "object": "model"}]}`))
+		}
+	}))
+	defer server.Close()
+
+	p, _ := New(server.URL, "")
+	// Trigger IsRunning to cache models
+	p.proxyManager.IsRunning(context.Background())
+
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() failed: %v", err)
+	}
+
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(models))
+	}
+	if models[0].ID != "gpt-4o" {
+		t.Errorf("first model ID = %q, want %q", models[0].ID, "gpt-4o")
+	}
+}
+
+func TestListModels_NoModels(t *testing.T) {
+	pm := NewProxyManager("http://localhost:59999")
+	p := &Provider{proxyManager: pm}
+
+	_, err := p.ListModels(context.Background())
+	if err == nil {
+		t.Error("expected error when no models available")
+	}
+}
+
+func TestSetModel(t *testing.T) {
+	p, _ := New("", "")
+
+	if p.Model() != "" {
+		t.Errorf("initial model should be empty, got %q", p.Model())
+	}
+
+	p.SetModel("gpt-4o")
+	if p.Model() != "gpt-4o" {
+		t.Errorf("Model() = %q, want %q", p.Model(), "gpt-4o")
+	}
+
+	p.SetModel("claude-3.5-sonnet")
+	if p.Model() != "claude-3.5-sonnet" {
+		t.Errorf("Model() = %q, want %q", p.Model(), "claude-3.5-sonnet")
+	}
+}
+
+func TestProxyManager_Models(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"data": [{"id": "model-1", "object": "model"}, {"id": "model-2", "object": "model"}]}`))
+		}
+	}))
+	defer server.Close()
+
+	pm := NewProxyManager(server.URL)
+
+	// Initially should return empty slice
+	models := pm.Models()
+	if len(models) != 0 {
+		t.Errorf("expected empty models initially, got %d", len(models))
+	}
+
+	// Trigger IsRunning to cache models
+	pm.IsRunning(context.Background())
+
+	models = pm.Models()
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models after IsRunning, got %d", len(models))
+	}
+	if models[0].ID != "model-1" {
+		t.Errorf("first model ID = %q, want %q", models[0].ID, "model-1")
+	}
+}
+
+func TestProxyManager_Models_ReturnsCopy(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"data": [{"id": "model-1", "object": "model"}]}`))
+		}
+	}))
+	defer server.Close()
+
+	pm := NewProxyManager(server.URL)
+	pm.IsRunning(context.Background())
+
+	models := pm.Models()
+	// Modify the returned slice
+	models[0].ID = "modified"
+
+	// Original should be unchanged
+	originalModels := pm.Models()
+	if originalModels[0].ID != "model-1" {
+		t.Error("Models() should return a copy, not the original slice")
+	}
 }

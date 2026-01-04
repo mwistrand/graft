@@ -12,8 +12,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Provider != DefaultProvider {
 		t.Errorf("expected provider %q, got %q", DefaultProvider, cfg.Provider)
 	}
-	if cfg.Model != DefaultModel {
-		t.Errorf("expected model %q, got %q", DefaultModel, cfg.Model)
+	if cfg.Model != "" {
+		t.Errorf("expected model to be empty, got %q", cfg.Model)
 	}
 }
 

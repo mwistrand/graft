@@ -10,6 +10,7 @@ import (
 	"github.com/mwistrand/graft/internal/analysis"
 	"github.com/mwistrand/graft/internal/config"
 	"github.com/mwistrand/graft/internal/git"
+	"github.com/mwistrand/graft/internal/prompt"
 	"github.com/mwistrand/graft/internal/provider"
 	"github.com/mwistrand/graft/internal/provider/claude"
 	"github.com/mwistrand/graft/internal/provider/copilot"
@@ -252,7 +253,8 @@ func initProvider(ctx context.Context, cfg *config.Config) (provider.Provider, f
 
 	case "copilot":
 		baseURL := cfg.CopilotBaseURL
-		p, err := copilot.New(baseURL, model)
+		copilotModel := modelName
+		p, err := copilot.New(baseURL, copilotModel)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -273,6 +275,21 @@ func initProvider(ctx context.Context, cfg *config.Config) (provider.Provider, f
 				p.Close()
 			}
 		}
+
+		// Prompt for model selection if no --model flag was provided
+		if modelName == "" {
+			selected, err := promptForModel(ctx, p)
+			if err != nil {
+				// On error, fall back to default model and inform the user
+				fmt.Printf("Note: %v\n", err)
+				p.SetModel(copilot.DefaultModel)
+				fmt.Printf("Using default model: %s\n\n", p.Model())
+			} else if selected != "" {
+				p.SetModel(selected)
+				fmt.Printf("Using model: %s\n\n", selected)
+			}
+		}
+
 		return p, cleanup, nil
 
 	default:
@@ -391,6 +408,27 @@ func getRepoContext(repoDir string) (string, error) {
 	}
 
 	return result.FormatContext(), nil
+}
+
+// promptForModel asks the user to select a model from the available options.
+func promptForModel(ctx context.Context, p provider.Provider) (string, error) {
+	lister, ok := p.(provider.ModelLister)
+	if !ok {
+		return "", fmt.Errorf("provider does not support listing models")
+	}
+
+	Verbose("Fetching available models...")
+	models, err := lister.ListModels(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if len(models) == 0 {
+		return "", fmt.Errorf("no models available from provider")
+	}
+
+	fmt.Println()
+	return prompt.SelectModel(models)
 }
 
 // promptForAnalysisPermission asks the user if they want to analyze the repository.

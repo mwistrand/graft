@@ -6,8 +6,6 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-LDFLAGS := -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
-
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
@@ -22,7 +20,7 @@ BINARY_NAME=graft
 # Build the application
 .PHONY: build
 build:
-	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/graft
+	$(GOBUILD) -o $(BINARY_NAME) ./cmd/graft
 
 # Run tests
 .PHONY: test
@@ -49,7 +47,7 @@ test-race:
 # Install the binary
 .PHONY: install
 install:
-	$(GOBUILD) $(LDFLAGS) -o $(GOPATH)/bin/$(BINARY_NAME) ./cmd/graft
+	$(GOBUILD) -o $(GOPATH)/bin/$(BINARY_NAME) ./cmd/graft
 
 # Clean build artifacts
 .PHONY: clean
@@ -83,17 +81,17 @@ build-all: build-linux build-darwin build-windows
 
 .PHONY: build-linux
 build-linux:
-	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-amd64 ./cmd/graft
-	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-arm64 ./cmd/graft
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -o dist/$(BINARY_NAME)-linux-amd64 ./cmd/graft
+	GOOS=linux GOARCH=arm64 $(GOBUILD) -o dist/$(BINARY_NAME)-linux-arm64 ./cmd/graft
 
 .PHONY: build-darwin
 build-darwin:
-	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-amd64 ./cmd/graft
-	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-arm64 ./cmd/graft
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o dist/$(BINARY_NAME)-darwin-amd64 ./cmd/graft
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o dist/$(BINARY_NAME)-darwin-arm64 ./cmd/graft
 
 .PHONY: build-windows
 build-windows:
-	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-amd64.exe ./cmd/graft
+	GOOS=windows GOARCH=amd64 $(GOBUILD) -o dist/$(BINARY_NAME)-windows-amd64.exe ./cmd/graft
 
 # Show help
 .PHONY: help

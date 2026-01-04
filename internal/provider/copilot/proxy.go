@@ -2,12 +2,15 @@ package copilot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/mwistrand/graft/internal/provider"
 )
 
 // ProxyManager handles the lifecycle of the copilot-api proxy server.
@@ -16,6 +19,7 @@ type ProxyManager struct {
 	mu      sync.Mutex
 	cmd     *exec.Cmd
 	started bool
+	models  []provider.ModelInfo // cached models from /v1/models
 }
 
 // NewProxyManager creates a new proxy manager for the given base URL.
@@ -60,6 +64,7 @@ func (m *ProxyManager) EnsureRunning(ctx context.Context, logFn func(string, ...
 }
 
 // IsRunning checks if the proxy is responding at the configured URL.
+// If the proxy is running, it also caches the available models.
 func (m *ProxyManager) IsRunning(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -75,7 +80,40 @@ func (m *ProxyManager) IsRunning(ctx context.Context) bool {
 	}
 	defer resp.Body.Close()
 
-	return resp.StatusCode == http.StatusOK
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	// Parse and cache the models response
+	var modelsResp struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Object  string `json:"object"`
+			OwnedBy string `json:"owned_by,omitempty"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err == nil {
+		m.mu.Lock()
+		m.models = make([]provider.ModelInfo, len(modelsResp.Data))
+		for i, model := range modelsResp.Data {
+			m.models[i] = provider.ModelInfo{
+				ID:   model.ID,
+				Name: model.ID,
+			}
+		}
+		m.mu.Unlock()
+	}
+
+	return true
+}
+
+// Models returns a copy of the cached models from the last successful /v1/models request.
+func (m *ProxyManager) Models() []provider.ModelInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]provider.ModelInfo, len(m.models))
+	copy(result, m.models)
+	return result
 }
 
 // Start launches the copilot-api proxy as a subprocess.

@@ -33,15 +33,12 @@ type Provider struct {
 }
 
 // New creates a new Copilot provider with the given base URL and model.
+// If model is empty, it will remain empty to allow for interactive selection.
 func New(baseURL, model string) (*Provider, error) {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
-
-	if model == "" {
-		model = DefaultModel
-	}
 
 	return &Provider{
 		baseURL:      baseURL,
@@ -64,9 +61,29 @@ func (p *Provider) Close() {
 	}
 }
 
+// ListModels returns the available models from the copilot-api proxy.
+// It uses the cached models from the proxy manager (populated during readiness check).
+func (p *Provider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
+	models := p.proxyManager.Models()
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models available (proxy may not be ready)")
+	}
+	return models, nil
+}
+
 // Name returns "copilot".
 func (p *Provider) Name() string {
 	return "copilot"
+}
+
+// SetModel updates the model used by this provider.
+func (p *Provider) SetModel(model string) {
+	p.model = model
+}
+
+// Model returns the currently configured model.
+func (p *Provider) Model() string {
+	return p.model
 }
 
 // chatRequest represents an OpenAI-compatible chat completion request.
