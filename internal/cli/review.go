@@ -166,7 +166,30 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// AI Summary
+	// Start file ordering in background while we generate and display summary
+	type orderResult struct {
+		files *provider.OrderResponse
+		err   error
+	}
+	orderCh := make(chan orderResult, 1)
+
+	if aiProvider != nil && !skipOrdering {
+		go func() {
+			Verbose("Determining file review order...")
+			files, err := aiProvider.OrderFiles(ctx, &provider.OrderRequest{
+				Files:       diffResult.Files,
+				Commits:     diffResult.Commits,
+				RepoContext: repoContext,
+				TestsFirst:  testsFirst,
+			})
+			orderCh <- orderResult{files: files, err: err}
+		}()
+	} else {
+		// No ordering requested, send nil immediately
+		orderCh <- orderResult{}
+	}
+
+	// AI Summary (blocking - user reads this while ordering runs in background)
 	var summary *provider.SummarizeResponse
 	if aiProvider != nil && !skipSummary {
 		Verbose("Generating AI summary...")
@@ -187,26 +210,25 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// AI File Ordering
-	var orderedFiles *provider.OrderResponse
-	if aiProvider != nil && !skipOrdering {
-		Verbose("Determining file review order...")
-		fmt.Println("Determining review order...")
+	// Prompt user to continue (only if summary was shown, giving user time to read)
+	if summary != nil {
+		if !prompt.ConfirmContinue("") {
+			fmt.Println("Review cancelled.")
+			return nil
+		}
+	}
 
-		orderedFiles, err = aiProvider.OrderFiles(ctx, &provider.OrderRequest{
-			Files:       diffResult.Files,
-			Commits:     diffResult.Commits,
-			RepoContext: repoContext,
-			TestsFirst:  testsFirst,
-		})
-		if err != nil {
-			fmt.Printf("Warning: Failed to determine order: %v\n", err)
-			fmt.Println("Using default file order.")
-			fmt.Println()
-		} else {
-			if err := renderer.RenderOrdering(orderedFiles); err != nil {
-				return fmt.Errorf("rendering ordering: %w", err)
-			}
+	// Wait for ordering to complete
+	var orderedFiles *provider.OrderResponse
+	result := <-orderCh
+	if result.err != nil {
+		fmt.Printf("Warning: Failed to determine order: %v\n", result.err)
+		fmt.Println("Using default file order.")
+		fmt.Println()
+	} else if result.files != nil {
+		orderedFiles = result.files
+		if err := renderer.RenderOrdering(orderedFiles); err != nil {
+			return fmt.Errorf("rendering ordering: %w", err)
 		}
 	}
 

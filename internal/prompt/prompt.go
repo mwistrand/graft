@@ -2,8 +2,10 @@
 package prompt
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/mwistrand/graft/internal/provider"
@@ -55,4 +57,34 @@ func SelectModel(models []provider.ModelInfo) (string, error) {
 	}
 
 	return selected, nil
+}
+
+// ConfirmContinue prompts the user to continue or quit.
+// Returns true if the user wants to continue, false to quit.
+// If not running in an interactive terminal, returns true (continue by default).
+func ConfirmContinue(message string) bool {
+	if !IsInteractive() {
+		return true
+	}
+
+	if message == "" {
+		message = "Continue reviewing diffs?"
+	}
+
+	fmt.Printf("\n%s [Y/n] ", message)
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return true // On error, continue by default
+	}
+
+	input = strings.TrimSpace(strings.ToLower(input))
+	// Default to yes if empty, or explicit yes
+	if input == "" || input == "y" || input == "yes" {
+		fmt.Println()
+		return true
+	}
+
+	return false
 }

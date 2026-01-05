@@ -204,7 +204,7 @@ graft config path
    - Potential concerns or risks
    - Logical file groupings
 
-3. **Intelligent Ordering**: Claude determines the best order to review files based on:
+3. **Intelligent Ordering**: While you read the summary, graft determines the best order to review files based on:
    - Configuration and constants first (set context)
    - Types and interfaces (understand the domain)
    - Entry points (main, handlers, CLI commands)
@@ -212,7 +212,60 @@ graft config path
    - Adapters (databases, external services)
    - Tests last
 
-4. **Beautiful Diffs**: Each file is displayed through Delta with syntax highlighting and side-by-side view (if configured).
+4. **Continue Prompt**: After displaying the summary, graft prompts you to continue:
+   ```
+   Continue reviewing diffs? [Y/n]
+   ```
+   Press Enter or `y` to proceed, or `n` to cancel the review.
+
+5. **Beautiful Diffs**: Each file is displayed through Delta with syntax highlighting and side-by-side view (if configured).
+
+## Navigating the Review
+
+### Review Flow
+
+```
+┌─────────────────────────────┐
+│     AI Summary Displayed    │
+│  (ordering runs in background)
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Continue reviewing? [Y/n]  │
+└──────────────┬──────────────┘
+               │
+       ┌───────┴───────┐
+       │               │
+       ▼               ▼
+    [Enter/y]         [n]
+       │               │
+       ▼               ▼
+┌──────────────┐  ┌──────────┐
+│ Show file    │  │  Cancel  │
+│ ordering &   │  │  review  │
+│ display diffs│  └──────────┘
+└──────────────┘
+```
+
+### Delta Pager Controls
+
+When viewing diffs through Delta, use standard pager controls:
+
+| Key | Action |
+|-----|--------|
+| `Space` / `Page Down` | Scroll down one page |
+| `b` / `Page Up` | Scroll up one page |
+| `j` / `↓` | Scroll down one line |
+| `k` / `↑` | Scroll up one line |
+| `g` | Go to start of file |
+| `G` | Go to end of file |
+| `q` | Quit current file (proceed to next) |
+| `/pattern` | Search for pattern |
+| `n` | Next search match |
+| `N` | Previous search match |
+
+Files are displayed sequentially in the AI-determined order. After viewing each file's diff, press `q` to proceed to the next file.
 
 ## File Category Icons
 

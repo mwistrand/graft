@@ -42,3 +42,20 @@ func TestIsInteractive_InTests(t *testing.T) {
 		t.Skip("skipping: stdin is a terminal in this test environment")
 	}
 }
+
+func TestConfirmContinue_NonInteractive(t *testing.T) {
+	// In test environment, stdin is not a terminal, so should return true (continue by default)
+	if IsInteractive() {
+		t.Skip("skipping: stdin is a terminal in this test environment")
+	}
+
+	result := ConfirmContinue("")
+	if !result {
+		t.Error("expected true (continue) in non-interactive mode")
+	}
+
+	result = ConfirmContinue("Custom message")
+	if !result {
+		t.Error("expected true (continue) in non-interactive mode with custom message")
+	}
+}
