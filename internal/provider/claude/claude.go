@@ -3,13 +3,12 @@ package claude
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+
 	"github.com/mwistrand/graft/internal/provider"
 )
 
@@ -48,7 +47,7 @@ func (p *Provider) Name() string {
 
 // SummarizeChanges analyzes a diff and returns a structured summary.
 func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.SummarizeRequest) (*provider.SummarizeResponse, error) {
-	prompt := buildSummaryPrompt(req)
+	prompt := provider.BuildSummaryPrompt(req)
 
 	maxTokens := req.Options.MaxTokens
 	if maxTokens == 0 {
@@ -74,7 +73,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 
 	// Parse JSON response
 	var summary provider.SummarizeResponse
-	if err := parseJSONResponse(text, &summary); err != nil {
+	if err := provider.ParseJSONResponse(text, &summary); err != nil {
 		return nil, fmt.Errorf("parsing summary response: %w", err)
 	}
 
@@ -83,7 +82,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 
 // OrderFiles determines the logical review order for changed files.
 func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (*provider.OrderResponse, error) {
-	prompt := buildOrderPrompt(req)
+	prompt := provider.BuildOrderPrompt(req)
 
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     p.model,
@@ -102,7 +101,7 @@ func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (
 	}
 
 	var order provider.OrderResponse
-	if err := parseJSONResponse(text, &order); err != nil {
+	if err := provider.ParseJSONResponse(text, &order); err != nil {
 		return nil, fmt.Errorf("parsing order response: %w", err)
 	}
 
@@ -117,52 +116,4 @@ func extractTextContent(resp *anthropic.Message) string {
 		}
 	}
 	return ""
-}
-
-// parseJSONResponse extracts and parses JSON from Claude's response.
-// It handles cases where JSON is wrapped in markdown code blocks.
-func parseJSONResponse(text string, v any) error {
-	// Try to extract JSON from markdown code blocks
-	jsonStr := extractJSON(text)
-
-	if err := json.Unmarshal([]byte(jsonStr), v); err != nil {
-		return fmt.Errorf("invalid JSON: %w\nResponse was: %s", err, text)
-	}
-
-	return nil
-}
-
-func extractJSON(text string) string {
-	// Look for JSON code block
-	start := strings.Index(text, "```json")
-	if start != -1 {
-		start += 7 // len("```json")
-		end := strings.Index(text[start:], "```")
-		if end != -1 {
-			return strings.TrimSpace(text[start : start+end])
-		}
-	}
-
-	// Look for generic code block
-	start = strings.Index(text, "```")
-	if start != -1 {
-		start += 3 // len("```")
-		// Skip language identifier if present
-		if nl := strings.Index(text[start:], "\n"); nl != -1 {
-			start += nl + 1
-		}
-		end := strings.Index(text[start:], "```")
-		if end != -1 {
-			return strings.TrimSpace(text[start : start+end])
-		}
-	}
-
-	// Look for raw JSON (starts with { or [)
-	for i := 0; i < len(text); i++ {
-		if text[i] == '{' || text[i] == '[' {
-			return strings.TrimSpace(text[i:])
-		}
-	}
-
-	return strings.TrimSpace(text)
 }

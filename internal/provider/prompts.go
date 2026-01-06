@@ -1,20 +1,20 @@
-package copilot
+package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/mwistrand/graft/internal/provider"
 )
 
-// buildSummaryPrompt constructs the prompt for change summarization.
-func buildSummaryPrompt(req *provider.SummarizeRequest) string {
+// BuildSummaryPrompt constructs the prompt for change summarization.
+func BuildSummaryPrompt(req *SummarizeRequest) string {
 	var b strings.Builder
 
 	b.WriteString(`You are an expert code reviewer analyzing a pull request. Review the following diff and commit messages to provide a concise, actionable summary.
 
 `)
 
+	// Add commits section
 	if len(req.Commits) > 0 {
 		b.WriteString("## Commits\n")
 		for _, c := range req.Commits {
@@ -27,6 +27,7 @@ func buildSummaryPrompt(req *provider.SummarizeRequest) string {
 		}
 	}
 
+	// Add changed files section
 	b.WriteString("## Changed Files\n")
 	for _, f := range req.Files {
 		status := f.Status
@@ -37,6 +38,7 @@ func buildSummaryPrompt(req *provider.SummarizeRequest) string {
 	}
 	b.WriteString("\n")
 
+	// Add diff content if available (truncated for large diffs)
 	if req.FullDiff != "" {
 		diff := req.FullDiff
 		const maxDiffLen = 50000
@@ -48,6 +50,7 @@ func buildSummaryPrompt(req *provider.SummarizeRequest) string {
 		b.WriteString("\n```\n\n")
 	}
 
+	// Add focus instruction if specified
 	if req.Options.Focus != "" {
 		b.WriteString(fmt.Sprintf("Focus your analysis on: %s\n\n", req.Options.Focus))
 	}
@@ -86,8 +89,8 @@ Return ONLY valid JSON, no additional text.`)
 	return b.String()
 }
 
-// buildOrderPrompt constructs the prompt for file ordering.
-func buildOrderPrompt(req *provider.OrderRequest) string {
+// BuildOrderPrompt constructs the prompt for file ordering.
+func BuildOrderPrompt(req *OrderRequest) string {
 	var b strings.Builder
 
 	b.WriteString(`You are an expert code reviewer determining the optimal order to review files in a pull request. Files should be ordered to maximize understanding.
@@ -172,4 +175,52 @@ Priority 1 = review first, higher numbers = later.
 Return ONLY valid JSON, no additional text.`)
 
 	return b.String()
+}
+
+// ParseJSONResponse extracts and parses JSON from an AI response.
+// It handles cases where JSON is wrapped in markdown code blocks.
+func ParseJSONResponse(text string, v any) error {
+	jsonStr := ExtractJSON(text)
+
+	if err := json.Unmarshal([]byte(jsonStr), v); err != nil {
+		return fmt.Errorf("invalid JSON: %w\nResponse was: %s", err, text)
+	}
+
+	return nil
+}
+
+// ExtractJSON extracts JSON content from a string that may contain markdown.
+func ExtractJSON(text string) string {
+	// Look for JSON code block
+	start := strings.Index(text, "```json")
+	if start != -1 {
+		start += 7 // len("```json")
+		end := strings.Index(text[start:], "```")
+		if end != -1 {
+			return strings.TrimSpace(text[start : start+end])
+		}
+	}
+
+	// Look for generic code block
+	start = strings.Index(text, "```")
+	if start != -1 {
+		start += 3 // len("```")
+		// Skip language identifier if present
+		if nl := strings.Index(text[start:], "\n"); nl != -1 {
+			start += nl + 1
+		}
+		end := strings.Index(text[start:], "```")
+		if end != -1 {
+			return strings.TrimSpace(text[start : start+end])
+		}
+	}
+
+	// Look for raw JSON (starts with { or [)
+	for i := 0; i < len(text); i++ {
+		if text[i] == '{' || text[i] == '[' {
+			return strings.TrimSpace(text[i:])
+		}
+	}
+
+	return strings.TrimSpace(text)
 }

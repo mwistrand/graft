@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/mwistrand/graft/internal/analysis"
 	"github.com/mwistrand/graft/internal/config"
 	"github.com/mwistrand/graft/internal/git"
@@ -15,7 +17,6 @@ import (
 	"github.com/mwistrand/graft/internal/provider/claude"
 	"github.com/mwistrand/graft/internal/provider/copilot"
 	"github.com/mwistrand/graft/internal/render"
-	"github.com/spf13/cobra"
 )
 
 var (

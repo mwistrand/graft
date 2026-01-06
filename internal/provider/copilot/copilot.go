@@ -113,7 +113,7 @@ type chatResponse struct {
 
 // SummarizeChanges analyzes a diff and returns a structured summary.
 func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.SummarizeRequest) (*provider.SummarizeResponse, error) {
-	prompt := buildSummaryPrompt(req)
+	prompt := provider.BuildSummaryPrompt(req)
 
 	maxTokens := req.Options.MaxTokens
 	if maxTokens == 0 {
@@ -126,7 +126,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 	}
 
 	var summary provider.SummarizeResponse
-	if err := parseJSONResponse(text, &summary); err != nil {
+	if err := provider.ParseJSONResponse(text, &summary); err != nil {
 		return nil, fmt.Errorf("parsing summary response: %w", err)
 	}
 
@@ -135,7 +135,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 
 // OrderFiles determines the logical review order for changed files.
 func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (*provider.OrderResponse, error) {
-	prompt := buildOrderPrompt(req)
+	prompt := provider.BuildOrderPrompt(req)
 
 	text, err := p.chat(ctx, prompt, 2048)
 	if err != nil {
@@ -143,7 +143,7 @@ func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (
 	}
 
 	var order provider.OrderResponse
-	if err := parseJSONResponse(text, &order); err != nil {
+	if err := provider.ParseJSONResponse(text, &order); err != nil {
 		return nil, fmt.Errorf("parsing order response: %w", err)
 	}
 
@@ -201,48 +201,4 @@ func (p *Provider) chat(ctx context.Context, prompt string, maxTokens int) (stri
 	}
 
 	return chatResp.Choices[0].Message.Content, nil
-}
-
-// parseJSONResponse extracts and parses JSON from the response text.
-func parseJSONResponse(text string, v any) error {
-	jsonStr := extractJSON(text)
-	if err := json.Unmarshal([]byte(jsonStr), v); err != nil {
-		return fmt.Errorf("invalid JSON: %w\nResponse was: %s", err, text)
-	}
-	return nil
-}
-
-// extractJSON extracts JSON content from a string that may contain markdown.
-func extractJSON(text string) string {
-	// Look for JSON code block
-	start := strings.Index(text, "```json")
-	if start != -1 {
-		start += 7
-		end := strings.Index(text[start:], "```")
-		if end != -1 {
-			return strings.TrimSpace(text[start : start+end])
-		}
-	}
-
-	// Look for generic code block
-	start = strings.Index(text, "```")
-	if start != -1 {
-		start += 3
-		if nl := strings.Index(text[start:], "\n"); nl != -1 {
-			start += nl + 1
-		}
-		end := strings.Index(text[start:], "```")
-		if end != -1 {
-			return strings.TrimSpace(text[start : start+end])
-		}
-	}
-
-	// Look for raw JSON
-	for i := 0; i < len(text); i++ {
-		if text[i] == '{' || text[i] == '[' {
-			return strings.TrimSpace(text[i:])
-		}
-	}
-
-	return strings.TrimSpace(text)
 }
