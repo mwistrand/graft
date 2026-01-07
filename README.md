@@ -21,21 +21,31 @@ But that's backwards! You want to understand *what* the change does before divin
 
 ## The Solution
 
-Graft reorders files by **architectural flow**:
+Graft groups related files by **feature** and orders them by **architectural flow**:
 ```
 === Review Order ===
 
-Files ordered by architectural flow: entry points first, then business logic, then adapters.
+Files grouped by feature, ordered by architectural flow within each group.
 
-  1. → controllers/users_controller.go
-      Main HTTP handler for user endpoints
-  2. ◆ services/user_service.go
-      Core user business logic
-  3. ● models/user.go
-      User domain model
-  4. ◇ adapters/user_repository.go
-      Database adapter for user persistence
+Groups:
+  1. User Authentication (3 files)
+     Adds login and session management
+  2. API Endpoints (2 files)
+     New user management endpoints
+
+  1. [User Authentication] → auth/handler.go
+      HTTP handler for auth endpoints
+  2. [User Authentication] ◆ auth/service.go
+      Authentication business logic
+  3. [User Authentication] ◇ auth/repository.go
+      Session storage adapter
+  4. [API Endpoints] → api/users.go
+      User CRUD endpoints
+  5. [API Endpoints] ◆ api/validation.go
+      Request validation logic
 ```
+
+This way, you review one complete feature before moving to the next.
 
 ## Installation
 
@@ -204,13 +214,13 @@ graft config path
    - Potential concerns or risks
    - Logical file groupings
 
-3. **Intelligent Ordering**: While you read the summary, graft determines the best order to review files based on:
-   - Configuration and constants first (set context)
-   - Types and interfaces (understand the domain)
-   - Entry points (main, handlers, CLI commands)
-   - Core business logic
-   - Adapters (databases, external services)
-   - Tests last
+3. **Intelligent Grouping & Ordering**: While you read the summary, graft determines the best order to review files:
+   - Groups related files by feature (e.g., "User Authentication", "API Refactor")
+   - Orders files within each group by architectural flow:
+     - Entry points (main, handlers, CLI commands)
+     - Core business logic
+     - Adapters (databases, external services)
+     - Tests
 
 4. **Continue Prompt**: After displaying the summary, graft prompts you to continue:
    ```
@@ -218,7 +228,22 @@ graft config path
    ```
    Press Enter or `y` to proceed, or `n` to cancel the review.
 
-5. **Beautiful Diffs**: Each file is displayed through Delta with syntax highlighting and side-by-side view (if configured).
+5. **Group Selection**: If multiple feature groups are detected, an interactive selector appears:
+   ```
+   Select groups to review
+   Space to toggle, Enter to confirm. All selected by default.
+
+   > [x] User Authentication - Adds login and session management (3 files)
+     [x] API Endpoints - New user management endpoints (2 files)
+     [x] Configuration - Updates to app config (1 files)
+   ```
+   Use Space to toggle groups on/off, then Enter to confirm your selection.
+
+6. **Beautiful Diffs**: Each file is displayed through Delta with syntax highlighting. The file header shows which group the file belongs to:
+   ```
+   [1/5] User Authentication -> → auth/handler.go
+     HTTP handler for auth endpoints
+   ```
 
 ## Navigating the Review
 
@@ -240,13 +265,55 @@ graft config path
        ▼               ▼
     [Enter/y]         [n]
        │               │
-       ▼               ▼
-┌──────────────┐  ┌──────────┐
-│ Show file    │  │  Cancel  │
-│ ordering &   │  │  review  │
-│ display diffs│  └──────────┘
-└──────────────┘
+       │               ▼
+       │          ┌──────────┐
+       │          │  Cancel  │
+       │          │  review  │
+       │          └──────────┘
+       ▼
+┌─────────────────────────────┐
+│   Show Review Order         │
+│   (with groups if detected) │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│   Select Groups to Review   │
+│   (if multiple groups)      │
+│   Space=toggle, Enter=done  │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│   Display Diffs             │
+│   Files shown by group,     │
+│   then by architecture      │
+└─────────────────────────────┘
 ```
+
+### Group Selection
+
+When the AI identifies multiple feature groups in your changes, you'll see an interactive selector:
+
+```
+Select groups to review
+Space to toggle, Enter to confirm. All selected by default.
+
+> [x] User Authentication - Adds login and session management (3 files)
+  [x] API Endpoints - New user management endpoints (2 files)
+  [ ] Documentation - README updates (1 files)
+```
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate between groups |
+| `Space` | Toggle group selection |
+| `Enter` | Confirm and start review |
+
+**Tips:**
+- All groups are selected by default - just press Enter to review everything
+- Deselect groups you want to skip (e.g., documentation-only changes)
+- Files are displayed in group order, so you review one feature completely before the next
 
 ### Delta Pager Controls
 

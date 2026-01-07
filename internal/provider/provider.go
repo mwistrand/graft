@@ -96,8 +96,24 @@ type OrderResponse struct {
 	// Files contains the files in recommended review order.
 	Files []OrderedFile `json:"files"`
 
+	// Groups contains metadata about feature groups (optional).
+	// When present, files are organized by logical feature/change unit.
+	Groups []OrderGroup `json:"groups,omitempty"`
+
 	// Reasoning explains the ordering strategy used.
 	Reasoning string `json:"reasoning"`
+}
+
+// OrderGroup represents a feature group of related files.
+type OrderGroup struct {
+	// Name is the group identifier (matches OrderedFile.Group).
+	Name string `json:"name"`
+
+	// Description explains what this feature/change accomplishes.
+	Description string `json:"description"`
+
+	// Priority determines group review order (1 = first).
+	Priority int `json:"priority"`
 }
 
 // OrderedFile represents a file with its review priority and metadata.
@@ -114,6 +130,10 @@ type OrderedFile struct {
 
 	// Description briefly explains what this file does in context.
 	Description string `json:"description"`
+
+	// Group is the name of the feature group this file belongs to (optional).
+	// Must match the Name field of an OrderGroup in the response.
+	Group string `json:"group,omitempty"`
 }
 
 // Category constants for file classification.

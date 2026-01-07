@@ -54,6 +54,16 @@ type Provider interface {
 }
 ```
 
+**File Grouping**: The `OrderFiles` response groups related files by feature:
+```go
+type OrderResponse struct {
+    Files     []OrderedFile  // Files with Group field
+    Groups    []OrderGroup   // Group metadata (name, description, priority)
+    Reasoning string
+}
+```
+The AI identifies logical feature groups and assigns each file to a group. Users can select which groups to review via an interactive multi-select prompt.
+
 **Repository Analysis**: The `analysis` package scans repo structure to detect project type (frontend/backend/fullstack) and frameworks, caching results at `.graft/analysis.json`.
 
 **Copilot Proxy**: The copilot provider auto-starts `npx copilot-api@latest` if not running, with a 2-minute timeout for GitHub authentication.

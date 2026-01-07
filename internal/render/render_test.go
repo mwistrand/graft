@@ -229,6 +229,145 @@ func TestGetCategoryIcon(t *testing.T) {
 	}
 }
 
+func TestFallbackRenderer_RenderOrdering_WithGroups(t *testing.T) {
+	buf := new(bytes.Buffer)
+	r := newFallbackRenderer(Options{Output: buf, ColorEnabled: false})
+
+	order := &provider.OrderResponse{
+		Reasoning: "Files grouped by feature",
+		Groups: []provider.OrderGroup{
+			{Name: "User Auth", Description: "Authentication changes", Priority: 1},
+			{Name: "API Layer", Description: "API endpoint updates", Priority: 2},
+		},
+		Files: []provider.OrderedFile{
+			{Path: "auth/handler.go", Category: provider.CategoryEntryPoint, Description: "Auth handler", Group: "User Auth"},
+			{Path: "auth/service.go", Category: provider.CategoryBusinessLogic, Description: "Auth service", Group: "User Auth"},
+			{Path: "api/routes.go", Category: provider.CategoryRouting, Description: "API routes", Group: "API Layer"},
+		},
+	}
+
+	err := r.RenderOrdering(order)
+	if err != nil {
+		t.Fatalf("RenderOrdering() failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// Check groups section
+	if !containsString(output, "Groups") {
+		t.Error("output should contain 'Groups' header")
+	}
+	if !containsString(output, "User Auth") {
+		t.Error("output should contain group name 'User Auth'")
+	}
+	if !containsString(output, "API Layer") {
+		t.Error("output should contain group name 'API Layer'")
+	}
+	if !containsString(output, "(2 files)") {
+		t.Error("output should show file count for User Auth group")
+	}
+	if !containsString(output, "(1 files)") {
+		t.Error("output should show file count for API Layer group")
+	}
+
+	// Check files show group context
+	if !containsString(output, "[User Auth]") {
+		t.Error("output should show group context for files")
+	}
+	if !containsString(output, "[API Layer]") {
+		t.Error("output should show group context for API Layer files")
+	}
+}
+
+func TestFallbackRenderer_RenderFileHeader_WithGroup(t *testing.T) {
+	buf := new(bytes.Buffer)
+	r := newFallbackRenderer(Options{Output: buf, ColorEnabled: false})
+
+	file := &provider.OrderedFile{
+		Path:        "internal/auth/handler.go",
+		Category:    provider.CategoryEntryPoint,
+		Description: "Authentication handler",
+		Group:       "User Auth",
+	}
+
+	err := r.RenderFileHeader(file, 2, 5)
+	if err != nil {
+		t.Fatalf("RenderFileHeader() failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// Check group context is shown
+	if !containsString(output, "[2/5]") {
+		t.Error("output should contain file number")
+	}
+	if !containsString(output, "User Auth ->") {
+		t.Error("output should contain group name with arrow")
+	}
+	if !containsString(output, "internal/auth/handler.go") {
+		t.Error("output should contain file path")
+	}
+}
+
+func TestFallbackRenderer_RenderFileHeader_WithoutGroup(t *testing.T) {
+	buf := new(bytes.Buffer)
+	r := newFallbackRenderer(Options{Output: buf, ColorEnabled: false})
+
+	file := &provider.OrderedFile{
+		Path:        "config.json",
+		Category:    provider.CategoryConfig,
+		Description: "Configuration file",
+		// No Group set
+	}
+
+	err := r.RenderFileHeader(file, 1, 1)
+	if err != nil {
+		t.Fatalf("RenderFileHeader() failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// Check no group context for ungrouped files
+	if containsString(output, "->") {
+		t.Error("output should not contain arrow for ungrouped files")
+	}
+	if !containsString(output, "[1/1]") {
+		t.Error("output should contain file number")
+	}
+	if !containsString(output, "config.json") {
+		t.Error("output should contain file path")
+	}
+}
+
+func TestCountFilesInGroup(t *testing.T) {
+	files := []provider.OrderedFile{
+		{Path: "a.go", Group: "Group A"},
+		{Path: "b.go", Group: "Group A"},
+		{Path: "c.go", Group: "Group B"},
+		{Path: "d.go", Group: "Group A"},
+		{Path: "e.go", Group: ""},
+	}
+
+	tests := []struct {
+		groupName string
+		want      int
+	}{
+		{"Group A", 3},
+		{"Group B", 1},
+		{"Group C", 0},
+		{"", 1}, // Empty string matches ungrouped files
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.groupName, func(t *testing.T) {
+			got := countFilesInGroup(files, tt.groupName)
+			if got != tt.want {
+				t.Errorf("countFilesInGroup(%q) = %d, want %d", tt.groupName, got, tt.want)
+			}
+		})
+	}
+}
+
 // Helper functions
 
 func runGit(t *testing.T, dir string, args ...string) {

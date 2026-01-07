@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -234,7 +235,20 @@ func runReview(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build file list for display
-	filesToReview := buildFileList(diffResult.Files, orderedFiles)
+	var filesToReview []provider.OrderedFile
+
+	// If we have groups, let user select which to review
+	if orderedFiles != nil && len(orderedFiles.Groups) > 0 {
+		selectedGroups, err := promptGroupSelection(orderedFiles.Groups, orderedFiles.Files)
+		if err != nil {
+			fmt.Printf("Warning: Group selection failed: %v\n", err)
+			filesToReview = buildFileList(diffResult.Files, orderedFiles)
+		} else {
+			filesToReview = buildGroupedFileList(orderedFiles.Files, selectedGroups)
+		}
+	} else {
+		filesToReview = buildFileList(diffResult.Files, orderedFiles)
+	}
 
 	// Display diffs
 	for i, file := range filesToReview {
@@ -338,6 +352,68 @@ func buildFileList(files []git.FileDiff, aiOrder *provider.OrderResponse) []prov
 		}
 	}
 	return result
+}
+
+// promptGroupSelection presents an interactive menu for group selection.
+// Returns the groups in the order the user wants to review them.
+func promptGroupSelection(groups []provider.OrderGroup, files []provider.OrderedFile) ([]provider.OrderGroup, error) {
+	// Count files per group for display
+	fileCounts := make(map[string]int)
+	for _, f := range files {
+		if f.Group != "" {
+			fileCounts[f.Group]++
+		}
+	}
+
+	return prompt.SelectGroups(groups, fileCounts)
+}
+
+// buildGroupedFileList creates the file list based on selected group order.
+// Files are ordered by group (in selected order), then by priority within each group.
+func buildGroupedFileList(files []provider.OrderedFile, selectedGroups []provider.OrderGroup) []provider.OrderedFile {
+	// Create a map of group name -> order index based on selection
+	groupOrder := make(map[string]int)
+	for i, g := range selectedGroups {
+		groupOrder[g.Name] = i
+	}
+
+	// Build set of selected group names
+	selectedSet := make(map[string]bool)
+	for _, g := range selectedGroups {
+		selectedSet[g.Name] = true
+	}
+
+	// Filter to only files in selected groups
+	filtered := make([]provider.OrderedFile, 0, len(files))
+	for _, f := range files {
+		if f.Group == "" || selectedSet[f.Group] {
+			filtered = append(filtered, f)
+		}
+	}
+
+	// Sort files: first by group order, then by priority within group
+	sort.SliceStable(filtered, func(i, j int) bool {
+		gi, goki := groupOrder[filtered[i].Group]
+		gj, gokj := groupOrder[filtered[j].Group]
+
+		// Ungrouped files go at the end
+		if !goki && gokj {
+			return false
+		}
+		if goki && !gokj {
+			return true
+		}
+
+		// Both grouped or both ungrouped - compare group order
+		if gi != gj {
+			return gi < gj
+		}
+
+		// Same group - sort by priority
+		return filtered[i].Priority < filtered[j].Priority
+	})
+
+	return filtered
 }
 
 // categorizeFile assigns a category based on file path.

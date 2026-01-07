@@ -282,3 +282,47 @@ func TestBuildOrderPrompt_EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildOrderPrompt_GroupingInstructions(t *testing.T) {
+	req := &OrderRequest{
+		Files: []git.FileDiff{
+			{Path: "handler.go", Status: git.StatusModified},
+			{Path: "service.go", Status: git.StatusModified},
+		},
+	}
+
+	prompt := BuildOrderPrompt(req)
+
+	// Check that grouping instructions are present
+	if !strings.Contains(prompt, "groups") {
+		t.Error("prompt should mention groups in JSON schema")
+	}
+	if !strings.Contains(prompt, "Identify features") {
+		t.Error("prompt should contain grouping strategy")
+	}
+	if !strings.Contains(prompt, "group") {
+		t.Error("prompt should mention group field for files")
+	}
+	if !strings.Contains(prompt, "Every file MUST have a group assigned") {
+		t.Error("prompt should require group assignment")
+	}
+}
+
+func TestBuildOrderPrompt_GroupJSONSchema(t *testing.T) {
+	req := &OrderRequest{
+		Files: []git.FileDiff{{Path: "main.go"}},
+	}
+
+	prompt := BuildOrderPrompt(req)
+
+	// Check JSON schema contains group-related fields
+	if !strings.Contains(prompt, `"groups"`) {
+		t.Error("prompt JSON schema should contain groups array")
+	}
+	if !strings.Contains(prompt, `"name"`) {
+		t.Error("prompt JSON schema should contain name field")
+	}
+	if !strings.Contains(prompt, `"description"`) {
+		t.Error("prompt JSON schema should contain description field")
+	}
+}

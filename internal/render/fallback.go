@@ -83,9 +83,27 @@ func (r *fallbackRenderer) RenderOrdering(order *provider.OrderResponse) error {
 		r.writeLine(w, "")
 	}
 
+	// If we have groups, display grouped view
+	if len(order.Groups) > 0 {
+		r.writeSubHeader(w, "Groups")
+		for i, group := range order.Groups {
+			fileCount := countFilesInGroup(order.Files, group.Name)
+			r.writeLine(w, fmt.Sprintf("  %d. %s (%d files)", i+1, group.Name, fileCount))
+			if group.Description != "" {
+				r.writeLine(w, fmt.Sprintf("     %s", group.Description))
+			}
+		}
+		r.writeLine(w, "")
+	}
+
+	// Show file list with group context
 	for i, file := range order.Files {
 		categoryIcon := getCategoryIcon(file.Category)
-		r.writeLine(w, fmt.Sprintf("  %2d. %s %s", i+1, categoryIcon, file.Path))
+		if file.Group != "" {
+			r.writeLine(w, fmt.Sprintf("  %2d. [%s] %s %s", i+1, file.Group, categoryIcon, file.Path))
+		} else {
+			r.writeLine(w, fmt.Sprintf("  %2d. %s %s", i+1, categoryIcon, file.Path))
+		}
 		if file.Description != "" {
 			r.writeLine(w, fmt.Sprintf("      %s", file.Description))
 		}
@@ -93,6 +111,17 @@ func (r *fallbackRenderer) RenderOrdering(order *provider.OrderResponse) error {
 	r.writeLine(w, "")
 
 	return nil
+}
+
+// countFilesInGroup counts how many files belong to a specific group.
+func countFilesInGroup(files []provider.OrderedFile, groupName string) int {
+	count := 0
+	for _, f := range files {
+		if f.Group == groupName {
+			count++
+		}
+	}
+	return count
 }
 
 // RenderFileHeader displays a header for a file before its diff.
@@ -103,7 +132,12 @@ func (r *fallbackRenderer) RenderFileHeader(file *provider.OrderedFile, fileNum,
 	r.writeDivider(w)
 
 	categoryIcon := getCategoryIcon(file.Category)
-	header := fmt.Sprintf("[%d/%d] %s %s", fileNum, totalFiles, categoryIcon, file.Path)
+	var header string
+	if file.Group != "" {
+		header = fmt.Sprintf("[%d/%d] %s -> %s %s", fileNum, totalFiles, file.Group, categoryIcon, file.Path)
+	} else {
+		header = fmt.Sprintf("[%d/%d] %s %s", fileNum, totalFiles, categoryIcon, file.Path)
+	}
 	r.writeHighlight(w, header)
 
 	if file.Description != "" {

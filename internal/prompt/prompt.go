@@ -88,3 +88,64 @@ func ConfirmContinue(message string) bool {
 
 	return false
 }
+
+// SelectGroups displays an interactive multi-select for choosing which groups to review.
+// Returns the selected groups in their original priority order.
+// If not interactive or user selects nothing, returns all groups.
+func SelectGroups(groups []provider.OrderGroup, fileCounts map[string]int) ([]provider.OrderGroup, error) {
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("no groups available")
+	}
+
+	if !IsInteractive() {
+		// Non-interactive: return groups in original order
+		return groups, nil
+	}
+
+	// Build options with file counts
+	options := make([]huh.Option[string], len(groups))
+	for i, g := range groups {
+		count := fileCounts[g.Name]
+		displayName := fmt.Sprintf("%s (%d files)", g.Name, count)
+		if g.Description != "" {
+			displayName = fmt.Sprintf("%s - %s (%d files)", g.Name, g.Description, count)
+		}
+		options[i] = huh.NewOption(displayName, g.Name).Selected(true)
+	}
+
+	var selected []string
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title("Select groups to review").
+				Description("Space to toggle, Enter to confirm. All selected by default.").
+				Options(options...).
+				Value(&selected),
+		),
+	).WithAccessible(false)
+
+	if err := form.Run(); err != nil {
+		return nil, fmt.Errorf("group selection: %w", err)
+	}
+
+	// If user deselected everything, return all groups
+	if len(selected) == 0 {
+		return groups, nil
+	}
+
+	// Build a set of selected group names
+	selectedSet := make(map[string]bool)
+	for _, name := range selected {
+		selectedSet[name] = true
+	}
+
+	// Return groups in original order, filtered to selected only
+	result := make([]provider.OrderGroup, 0, len(selected))
+	for _, g := range groups {
+		if selectedSet[g.Name] {
+			result = append(result, g)
+		}
+	}
+
+	return result, nil
+}

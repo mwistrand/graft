@@ -93,7 +93,12 @@ Return ONLY valid JSON, no additional text.`)
 func BuildOrderPrompt(req *OrderRequest) string {
 	var b strings.Builder
 
-	b.WriteString(`You are an expert code reviewer determining the optimal order to review files in a pull request. Files should be ordered to maximize understanding.
+	b.WriteString(`You are an expert code reviewer determining the optimal order to review files in a pull request.
+
+Your goals:
+1. Identify related changes that form logical features or units of work
+2. Group files by these features so reviewers can understand one feature completely before moving to the next
+3. Order files within each group to maximize understanding (entry points -> business logic -> adapters -> tests)
 
 `)
 
@@ -124,30 +129,46 @@ func BuildOrderPrompt(req *OrderRequest) string {
 
 ---
 
-Determine the optimal review order. Respond with a JSON object in this exact format:
+Respond with a JSON object in this exact format:
 {
+  "groups": [
+    {
+      "name": "Short feature name (2-4 words)",
+      "description": "Brief explanation of what this feature/change accomplishes",
+      "priority": 1
+    }
+  ],
   "files": [
     {
       "path": "path/to/file.go",
       "category": "entry_point|business_logic|adapter|model|config|test|docs|routing|component|other",
       "priority": 1,
-      "description": "Brief description of what this file does in the context of this PR"
+      "description": "Brief description of what this file does",
+      "group": "Short feature name (must match a group name)"
     }
   ],
-  "reasoning": "Brief explanation of the ordering strategy used"
+  "reasoning": "Brief explanation of the grouping and ordering strategy"
 }
 
-## Ordering Strategy
+## Grouping Strategy
 
-Adapt your ordering based on the project type:
+1. **Identify features**: Look for related changes that form a cohesive unit:
+   - Files that implement a single feature together (handler + service + model + test)
+   - A refactoring that spans multiple related files
+   - Configuration changes that belong together
 
-**For frontend projects:**
-1. Routing (pages, routes)
-2. Container/smart components (state management)
-3. Presentational components (UI building blocks)
-4. Models/types (data shapes)
-5. Services (API clients, state stores)
-6. Tests
+2. **Name groups meaningfully**: Use action-oriented names like:
+   - "User Authentication" (not "auth.go changes")
+   - "API Error Handling" (not "misc fixes")
+   - "Database Migration" (not "db stuff")
+
+3. **Order groups**: Put foundational/dependency changes first, then features that build on them
+
+4. **Handle miscellaneous files**: Group standalone config files, docs, or unrelated small changes into a "Configuration" or "Miscellaneous" group
+
+## File Ordering Within Groups
+
+Adapt ordering based on the project type:
 
 **For backend projects:**
 1. Entry points (main, cmd, handlers)
@@ -157,21 +178,30 @@ Adapt your ordering based on the project type:
 5. Adapters (databases, external services)
 6. Tests
 
+**For frontend projects:**
+1. Routing (pages, routes)
+2. Container/smart components (state management)
+3. Presentational components (UI building blocks)
+4. Models/types (data shapes)
+5. Services (API clients, state stores)
+6. Tests
+
 **For fullstack/mixed projects:**
 1. Backend changes first (APIs shape frontend)
-2. Then frontend changes following the frontend ordering above
-3. Tests last
+2. Then frontend changes
 
 `)
 
 	if req.TestsFirst {
-		b.WriteString(`**IMPORTANT:** The user has requested tests-first ordering. Place ALL test files at the BEGINNING of the review (priority 1-N) so the reviewer understands intent before seeing implementation.
+		b.WriteString(`**IMPORTANT:** The user has requested tests-first ordering. Within each group, place test files at the BEGINNING so the reviewer understands intent before seeing implementation.
 
 `)
 	}
 
 	b.WriteString(`Keep descriptions brief (under 15 words).
+Group names should be 2-4 words.
 Priority 1 = review first, higher numbers = later.
+Every file MUST have a group assigned.
 Return ONLY valid JSON, no additional text.`)
 
 	return b.String()
