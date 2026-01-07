@@ -408,3 +408,37 @@ func TestOutputAIReview_ToConsole(t *testing.T) {
 		t.Fatalf("outputAIReview() failed: %v", err)
 	}
 }
+
+func TestOutputAIReview_EmptyContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputPath := tmpDir + "/review.md"
+
+	err := outputAIReview("", outputPath)
+	if err == nil {
+		t.Fatal("expected error for empty content")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Errorf("error should mention empty content: %v", err)
+	}
+}
+
+func TestOutputAIReview_CreatesParentDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Create a nested path where the parent directory doesn't exist
+	outputPath := tmpDir + "/nested/subdir/review.md"
+	content := "# Code Review\n\nThis is a test review."
+
+	err := outputAIReview(content, outputPath)
+	if err != nil {
+		t.Fatalf("outputAIReview() failed: %v", err)
+	}
+
+	// Verify file was written
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+	if string(written) != content {
+		t.Errorf("written content = %q, want %q", string(written), content)
+	}
+}

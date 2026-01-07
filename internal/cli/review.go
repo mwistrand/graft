@@ -252,39 +252,12 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Prompt user to continue (only if summary was shown, giving user time to read)
-	if summary != nil {
-		if !prompt.ConfirmContinue("") {
-			fmt.Println("Review cancelled.")
-			return nil
-		}
-	}
-
-	// Wait for ordering to complete
-	var orderedFiles *provider.OrderResponse
-	var orderingFromCache bool
-	result := <-orderCh
-	if result.err != nil {
-		fmt.Printf("Warning: Failed to determine order: %v\n", result.err)
-		fmt.Println("Using default file order.")
-		fmt.Println()
-	} else if result.files != nil {
-		orderedFiles = result.files
-		// Check if this came from cache (we set it directly, no goroutine)
-		if cachedReview != nil && cachedReview.Ordering != nil {
-			orderingFromCache = true
-		}
-		if err := renderer.RenderOrdering(orderedFiles); err != nil {
-			return fmt.Errorf("rendering ordering: %w", err)
-		}
-	}
-
-	// Handle AI review generation
+	// Handle AI review generation (before prompting user to continue)
 	var aiReviewResponse *provider.ReviewResponse
 	var reviewFromCache bool
 	if aiReview {
-		// Check if we have cached review
-		if cachedReview != nil && cachedReview.Review != nil && !refresh {
+		// Check if we have cached review (with non-empty content)
+		if cachedReview != nil && cachedReview.Review != nil && cachedReview.Review.Content != "" && !refresh {
 			Verbose("Using cached AI review")
 			aiReviewResponse = cachedReview.Review
 			reviewFromCache = true
@@ -322,6 +295,44 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Output AI review before prompting to continue
+	if aiReview {
+		if aiReviewResponse != nil {
+			if err := outputAIReview(aiReviewResponse.Content, aiReviewOutput); err != nil {
+				return fmt.Errorf("outputting AI review: %w", err)
+			}
+		} else {
+			fmt.Println("Warning: AI review was requested but no review was generated")
+		}
+	}
+
+	// Prompt user to continue (after showing summary and AI review)
+	if summary != nil || aiReviewResponse != nil {
+		if !prompt.ConfirmContinue("") {
+			fmt.Println("Review cancelled.")
+			return nil
+		}
+	}
+
+	// Wait for ordering to complete
+	var orderedFiles *provider.OrderResponse
+	var orderingFromCache bool
+	result := <-orderCh
+	if result.err != nil {
+		fmt.Printf("Warning: Failed to determine order: %v\n", result.err)
+		fmt.Println("Using default file order.")
+		fmt.Println()
+	} else if result.files != nil {
+		orderedFiles = result.files
+		// Check if this came from cache (we set it directly, no goroutine)
+		if cachedReview != nil && cachedReview.Ordering != nil {
+			orderingFromCache = true
+		}
+		if err := renderer.RenderOrdering(orderedFiles); err != nil {
+			return fmt.Errorf("rendering ordering: %w", err)
+		}
+	}
+
 	// Save to cache if we got new results from AI
 	if !summaryFromCache || !orderingFromCache || (aiReview && !reviewFromCache && aiReviewResponse != nil) {
 		// Preserve existing cached review if we didn't generate a new one
@@ -349,13 +360,6 @@ func runReview(cmd *cobra.Command, args []string) error {
 			Verbose("Warning: failed to cache review: %v", err)
 		} else {
 			Verbose("Review cached (key: %s)", cacheKey)
-		}
-	}
-
-	// Output AI review if generated
-	if aiReviewResponse != nil {
-		if err := outputAIReview(aiReviewResponse.Content, aiReviewOutput); err != nil {
-			return fmt.Errorf("outputting AI review: %w", err)
 		}
 	}
 
@@ -701,7 +705,16 @@ func loadReviewPrompt(repoDir string) (string, error) {
 
 // outputAIReview writes the AI review to console or a file.
 func outputAIReview(content string, outputPath string) error {
+	if content == "" {
+		return fmt.Errorf("AI review content is empty")
+	}
+
 	if outputPath != "" {
+		// Create parent directory if it doesn't exist
+		dir := filepath.Dir(outputPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("creating output directory: %w", err)
+		}
 		if err := os.WriteFile(outputPath, []byte(content), 0600); err != nil {
 			return fmt.Errorf("writing review to file: %w", err)
 		}
