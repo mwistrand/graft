@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -56,7 +57,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&modelName, "model", "", "Model to use (default from config)")
 	reviewCmd.Flags().BoolVar(&noDelta, "no-delta", false, "Disable Delta rendering")
 	reviewCmd.Flags().BoolVar(&testsFirst, "tests-first", false, "Show test files before implementation")
-	reviewCmd.Flags().BoolVar(&refresh, "refresh", false, "Re-analyze repository structure")
+	reviewCmd.Flags().BoolVar(&refresh, "refresh", false, "Re-analyze repository and refresh AI cache")
 	reviewCmd.Flags().BoolVar(&noAnalyze, "no-analyze", false, "Skip repository analysis")
 
 	rootCmd.AddCommand(reviewCmd)
@@ -158,9 +159,25 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Get full diff for AI analysis
+	// Set up review cache
+	reviewCache := provider.NewReviewCache(repoDir)
+	cacheKey := provider.GenerateCacheKey(baseRef, diffResult.Commits)
+
+	// Check for cached review
+	var cachedReview *provider.CachedReview
+	if !refresh {
+		cachedReview, err = reviewCache.Load(cacheKey)
+		if err != nil {
+			Verbose("Warning: failed to load cached review: %v", err)
+		}
+		if cachedReview != nil {
+			Verbose("Using cached AI review (key: %s)", cacheKey)
+		}
+	}
+
+	// Get full diff for AI analysis (only if needed)
 	var fullDiff string
-	if aiProvider != nil && !skipSummary {
+	if aiProvider != nil && !skipSummary && (cachedReview == nil || cachedReview.Summary == nil) {
 		Verbose("Getting full diff for analysis...")
 		fullDiff, err = repo.GetFullDiff(ctx, baseRef)
 		if err != nil {
@@ -176,16 +193,22 @@ func runReview(cmd *cobra.Command, args []string) error {
 	orderCh := make(chan orderResult, 1)
 
 	if aiProvider != nil && !skipOrdering {
-		go func() {
-			Verbose("Determining file review order...")
-			files, err := aiProvider.OrderFiles(ctx, &provider.OrderRequest{
-				Files:       diffResult.Files,
-				Commits:     diffResult.Commits,
-				RepoContext: repoContext,
-				TestsFirst:  testsFirst,
-			})
-			orderCh <- orderResult{files: files, err: err}
-		}()
+		// Check if we have cached ordering
+		if cachedReview != nil && cachedReview.Ordering != nil {
+			Verbose("Using cached file ordering")
+			orderCh <- orderResult{files: cachedReview.Ordering}
+		} else {
+			go func() {
+				Verbose("Determining file review order...")
+				files, err := aiProvider.OrderFiles(ctx, &provider.OrderRequest{
+					Files:       diffResult.Files,
+					Commits:     diffResult.Commits,
+					RepoContext: repoContext,
+					TestsFirst:  testsFirst,
+				})
+				orderCh <- orderResult{files: files, err: err}
+			}()
+		}
 	} else {
 		// No ordering requested, send nil immediately
 		orderCh <- orderResult{}
@@ -193,21 +216,32 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// AI Summary (blocking - user reads this while ordering runs in background)
 	var summary *provider.SummarizeResponse
+	var summaryFromCache bool
 	if aiProvider != nil && !skipSummary {
-		Verbose("Generating AI summary...")
-		fmt.Println("Analyzing changes...")
-
-		summary, err = aiProvider.SummarizeChanges(ctx, &provider.SummarizeRequest{
-			Files:    diffResult.Files,
-			Commits:  diffResult.Commits,
-			FullDiff: fullDiff,
-			Options:  provider.DefaultSummarizeOptions(),
-		})
-		if err != nil {
-			fmt.Printf("Warning: Failed to generate summary: %v\n\n", err)
-		} else {
+		// Check if we have cached summary
+		if cachedReview != nil && cachedReview.Summary != nil {
+			Verbose("Using cached AI summary")
+			summary = cachedReview.Summary
+			summaryFromCache = true
 			if err := renderer.RenderSummary(summary); err != nil {
 				return fmt.Errorf("rendering summary: %w", err)
+			}
+		} else {
+			Verbose("Generating AI summary...")
+			fmt.Println("Analyzing changes...")
+
+			summary, err = aiProvider.SummarizeChanges(ctx, &provider.SummarizeRequest{
+				Files:    diffResult.Files,
+				Commits:  diffResult.Commits,
+				FullDiff: fullDiff,
+				Options:  provider.DefaultSummarizeOptions(),
+			})
+			if err != nil {
+				fmt.Printf("Warning: Failed to generate summary: %v\n\n", err)
+			} else {
+				if err := renderer.RenderSummary(summary); err != nil {
+					return fmt.Errorf("rendering summary: %w", err)
+				}
 			}
 		}
 	}
@@ -222,6 +256,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// Wait for ordering to complete
 	var orderedFiles *provider.OrderResponse
+	var orderingFromCache bool
 	result := <-orderCh
 	if result.err != nil {
 		fmt.Printf("Warning: Failed to determine order: %v\n", result.err)
@@ -229,8 +264,35 @@ func runReview(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	} else if result.files != nil {
 		orderedFiles = result.files
+		// Check if this came from cache (we set it directly, no goroutine)
+		if cachedReview != nil && cachedReview.Ordering != nil {
+			orderingFromCache = true
+		}
 		if err := renderer.RenderOrdering(orderedFiles); err != nil {
 			return fmt.Errorf("rendering ordering: %w", err)
+		}
+	}
+
+	// Save to cache if we got new results from AI
+	if !summaryFromCache || !orderingFromCache {
+		newCache := &provider.CachedReview{
+			CacheKey: cacheKey,
+			BaseRef:  baseRef,
+			CommitHashes: func() []string {
+				hashes := make([]string, len(diffResult.Commits))
+				for i, c := range diffResult.Commits {
+					hashes[i] = c.Hash
+				}
+				return hashes
+			}(),
+			Summary:  summary,
+			Ordering: orderedFiles,
+			CachedAt: time.Now(),
+		}
+		if err := reviewCache.Save(newCache); err != nil {
+			Verbose("Warning: failed to cache review: %v", err)
+		} else {
+			Verbose("Review cached (key: %s)", cacheKey)
 		}
 	}
 

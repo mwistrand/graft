@@ -167,6 +167,36 @@ graft review main --model gpt-4o
 
 # Show tests before implementation files
 graft review main --tests-first
+
+# Force refresh (bypass cache and re-analyze)
+graft review main --refresh
+```
+
+### Response Caching
+
+Graft caches AI responses to speed up subsequent reviews of the same commits. The cache is keyed by:
+- The base branch reference
+- The commit hashes being reviewed
+
+**How it works:**
+- First review: AI generates summary and ordering, results are cached
+- Subsequent reviews of same commits: Cached results are used instantly
+- Use `--refresh` to bypass the cache and get fresh AI analysis
+
+**Cache location:** `.graft/reviews/<cache-key>.json`
+
+This is especially useful when:
+- Reviewing the same branch multiple times during development
+- Re-running a review after accidentally closing the terminal
+
+### Cache Management
+
+```bash
+# Clear all cached reviews (with confirmation)
+graft cache clear
+
+# Clear only stale entries (older than one week)
+graft cache clear --stale
 ```
 
 ### Interactive Model Selection

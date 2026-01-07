@@ -66,6 +66,12 @@ The AI identifies logical feature groups and assigns each file to a group. Users
 
 **Repository Analysis**: The `analysis` package scans repo structure to detect project type (frontend/backend/fullstack) and frameworks, caching results at `.graft/analysis.json`.
 
+**Review Caching**: AI responses (summary and ordering) are cached in `.graft/reviews/<key>.json` where the key is derived from commit hashes. This allows instant re-reviews of the same commits. Use `--refresh` to bypass the cache.
+```go
+// Cache key is generated from base ref + sorted commit hashes
+cacheKey := provider.GenerateCacheKey(baseRef, commits)
+```
+
 **Copilot Proxy**: The copilot provider auto-starts `npx copilot-api@latest` if not running, with a 2-minute timeout for GitHub authentication.
 
 ### Adding a New Provider
