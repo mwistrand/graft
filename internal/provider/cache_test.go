@@ -512,3 +512,89 @@ func TestReviewCache_ClearStale_NoStaleEntries(t *testing.T) {
 		t.Errorf("expected 3 remaining, got %d", count)
 	}
 }
+
+func TestReviewCache_WithReview(t *testing.T) {
+	tmpDir := t.TempDir()
+	cache := NewReviewCache(tmpDir)
+	cacheKey := "review123456789"
+
+	// Create test data with all fields including Review
+	original := &CachedReview{
+		CacheKey:     cacheKey,
+		BaseRef:      "main",
+		CommitHashes: []string{"abc123", "def456"},
+		Summary: &SummarizeResponse{
+			Overview:   "Test overview",
+			KeyChanges: []string{"Change 1", "Change 2"},
+		},
+		Ordering: &OrderResponse{
+			Files: []OrderedFile{
+				{Path: "main.go", Category: CategoryEntryPoint, Priority: 1},
+			},
+			Reasoning: "Test reasoning",
+		},
+		Review: &ReviewResponse{
+			Content: "# Code Review\n\nThis is a test review.",
+		},
+		CachedAt: time.Now(),
+	}
+
+	// Save
+	if err := cache.Save(original); err != nil {
+		t.Fatalf("Save() failed: %v", err)
+	}
+
+	// Load
+	loaded, err := cache.Load(cacheKey)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if loaded == nil {
+		t.Fatal("Load() returned nil")
+	}
+
+	// Verify Review data
+	if loaded.Review == nil {
+		t.Fatal("Review should be loaded")
+	}
+	if loaded.Review.Content != original.Review.Content {
+		t.Errorf("Review.Content = %q, want %q", loaded.Review.Content, original.Review.Content)
+	}
+}
+
+func TestReviewCache_PartialCache_NoReview(t *testing.T) {
+	tmpDir := t.TempDir()
+	cache := NewReviewCache(tmpDir)
+
+	// Save with only summary and ordering (no review)
+	review := &CachedReview{
+		CacheKey: "noreview",
+		BaseRef:  "main",
+		Summary: &SummarizeResponse{
+			Overview: "Test",
+		},
+		Ordering: &OrderResponse{
+			Reasoning: "Test reasoning",
+		},
+		// Review is nil
+	}
+	if err := cache.Save(review); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := cache.Load("noreview")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if loaded.Summary == nil {
+		t.Error("Summary should be loaded")
+	}
+	if loaded.Ordering == nil {
+		t.Error("Ordering should be loaded")
+	}
+	if loaded.Review != nil {
+		t.Error("Review should be nil")
+	}
+}

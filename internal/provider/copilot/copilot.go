@@ -120,7 +120,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 		maxTokens = 2048
 	}
 
-	text, err := p.chat(ctx, prompt, maxTokens)
+	text, err := p.chat(ctx, prompt, "", maxTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (*provider.OrderResponse, error) {
 	prompt := provider.BuildOrderPrompt(req)
 
-	text, err := p.chat(ctx, prompt, 2048)
+	text, err := p.chat(ctx, prompt, "", 2048)
 	if err != nil {
 		return nil, err
 	}
@@ -150,13 +150,35 @@ func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (
 	return &order, nil
 }
 
+// ReviewChanges performs a detailed code review of the changes.
+func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewRequest) (*provider.ReviewResponse, error) {
+	prompt := provider.BuildReviewPrompt(req)
+
+	maxTokens := req.Options.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = 8192
+	}
+
+	text, err := p.chat(ctx, prompt, req.SystemPrompt, maxTokens)
+	if err != nil {
+		return nil, err
+	}
+
+	return &provider.ReviewResponse{Content: text}, nil
+}
+
 // chat sends a message to the copilot-api proxy and returns the response text.
-func (p *Provider) chat(ctx context.Context, prompt string, maxTokens int) (string, error) {
+// If systemPrompt is non-empty, it's included as a system message.
+func (p *Provider) chat(ctx context.Context, prompt string, systemPrompt string, maxTokens int) (string, error) {
+	messages := []chatMessage{}
+	if systemPrompt != "" {
+		messages = append(messages, chatMessage{Role: "system", Content: systemPrompt})
+	}
+	messages = append(messages, chatMessage{Role: "user", Content: prompt})
+
 	reqBody := chatRequest{
-		Model: p.model,
-		Messages: []chatMessage{
-			{Role: "user", Content: prompt},
-		},
+		Model:     p.model,
+		Messages:  messages,
 		MaxTokens: maxTokens,
 	}
 

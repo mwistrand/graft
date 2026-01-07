@@ -326,3 +326,89 @@ func TestBuildOrderPrompt_GroupJSONSchema(t *testing.T) {
 		t.Error("prompt JSON schema should contain description field")
 	}
 }
+
+func TestBuildReviewPrompt(t *testing.T) {
+	req := &ReviewRequest{
+		Files: []git.FileDiff{
+			{Path: "main.go", Status: git.StatusModified, Additions: 10, Deletions: 5},
+			{Path: "helper.go", Status: git.StatusAdded, Additions: 20, Deletions: 0},
+		},
+		Commits: []git.Commit{
+			{ShortHash: "abc123", Author: "Test User", Subject: "Add feature"},
+		},
+		FullDiff: "+line1\n-line2",
+	}
+
+	prompt := BuildReviewPrompt(req)
+
+	// Check that key elements are present
+	if !strings.Contains(prompt, "main.go") {
+		t.Error("prompt should contain main.go")
+	}
+	if !strings.Contains(prompt, "helper.go") {
+		t.Error("prompt should contain helper.go")
+	}
+	if !strings.Contains(prompt, "abc123") {
+		t.Error("prompt should contain commit hash")
+	}
+	if !strings.Contains(prompt, "Add feature") {
+		t.Error("prompt should contain commit message")
+	}
+	if !strings.Contains(prompt, "+line1") {
+		t.Error("prompt should contain diff content")
+	}
+	if !strings.Contains(prompt, "Executive Summary") {
+		t.Error("prompt should mention Executive Summary")
+	}
+	if !strings.Contains(prompt, "Security Considerations") {
+		t.Error("prompt should mention Security Considerations")
+	}
+}
+
+func TestBuildReviewPrompt_LargeDiffTruncation(t *testing.T) {
+	largeDiff := strings.Repeat("x", 100000)
+	req := &ReviewRequest{
+		Files:    []git.FileDiff{{Path: "huge.go"}},
+		FullDiff: largeDiff,
+	}
+	prompt := BuildReviewPrompt(req)
+
+	if !strings.Contains(prompt, "... [diff truncated for length] ...") {
+		t.Error("large diff should be truncated")
+	}
+	if strings.Contains(prompt, strings.Repeat("x", 80001)) {
+		t.Error("prompt should not contain more than 80000 chars of diff")
+	}
+}
+
+func TestBuildReviewPrompt_EdgeCases(t *testing.T) {
+	t.Run("empty commits", func(t *testing.T) {
+		req := &ReviewRequest{
+			Files: []git.FileDiff{{Path: "main.go"}},
+		}
+		prompt := BuildReviewPrompt(req)
+		if strings.Contains(prompt, "## Commits") {
+			t.Error("prompt should not have Commits section when commits are empty")
+		}
+	})
+
+	t.Run("renamed file", func(t *testing.T) {
+		req := &ReviewRequest{
+			Files: []git.FileDiff{{Path: "new.go", OldPath: "old.go", Status: git.StatusRenamed}},
+		}
+		prompt := BuildReviewPrompt(req)
+		if !strings.Contains(prompt, "old.go") {
+			t.Error("prompt should include old path for renamed files")
+		}
+	})
+
+	t.Run("empty diff", func(t *testing.T) {
+		req := &ReviewRequest{
+			Files: []git.FileDiff{{Path: "main.go"}},
+		}
+		prompt := BuildReviewPrompt(req)
+		if strings.Contains(prompt, "## Diff Content") {
+			t.Error("prompt should not have Diff Content section when diff is empty")
+		}
+	})
+}

@@ -108,6 +108,43 @@ func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (
 	return &order, nil
 }
 
+// ReviewChanges performs a detailed code review of the changes.
+func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewRequest) (*provider.ReviewResponse, error) {
+	prompt := provider.BuildReviewPrompt(req)
+
+	maxTokens := req.Options.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = 8192
+	}
+
+	params := anthropic.MessageNewParams{
+		Model:     p.model,
+		MaxTokens: int64(maxTokens),
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+		},
+	}
+
+	// Add system prompt if provided
+	if req.SystemPrompt != "" {
+		params.System = []anthropic.TextBlockParam{
+			{Text: req.SystemPrompt},
+		}
+	}
+
+	resp, err := p.client.Messages.New(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("claude API error: %w", err)
+	}
+
+	text := extractTextContent(resp)
+	if text == "" {
+		return nil, errors.New("empty response from Claude")
+	}
+
+	return &provider.ReviewResponse{Content: text}, nil
+}
+
 // extractTextContent extracts the text content from a Claude response.
 func extractTextContent(resp *anthropic.Message) string {
 	for _, block := range resp.Content {

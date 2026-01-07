@@ -51,6 +51,7 @@ type Provider interface {
     Name() string
     SummarizeChanges(ctx, req) (*SummarizeResponse, error)
     OrderFiles(ctx, req) (*OrderResponse, error)
+    ReviewChanges(ctx, req) (*ReviewResponse, error)
 }
 ```
 
@@ -66,11 +67,13 @@ The AI identifies logical feature groups and assigns each file to a group. Users
 
 **Repository Analysis**: The `analysis` package scans repo structure to detect project type (frontend/backend/fullstack) and frameworks, caching results at `.graft/analysis.json`.
 
-**Review Caching**: AI responses (summary and ordering) are cached in `.graft/reviews/<key>.json` where the key is derived from commit hashes. This allows instant re-reviews of the same commits. Use `--refresh` to bypass the cache.
+**Review Caching**: AI responses (summary, ordering, and code reviews) are cached in `.graft/reviews/<key>.json` where the key is derived from commit hashes. This allows instant re-reviews of the same commits. Use `--refresh` to bypass the cache.
 ```go
 // Cache key is generated from base ref + sorted commit hashes
 cacheKey := provider.GenerateCacheKey(baseRef, commits)
 ```
+
+**AI Code Review**: The `--ai-review` flag generates detailed code reviews. Custom system prompts can be placed at `.graft/code-reviewer.md` to override the default review approach.
 
 **Copilot Proxy**: The copilot provider auto-starts `npx copilot-api@latest` if not running, with a 2-minute timeout for GitHub authentication.
 
@@ -90,4 +93,4 @@ Key settings:
 - `anthropic-api-key`: For Claude
 - `copilot-base-url`: For Copilot proxy (default: http://localhost:4141)
 
-Environment overrides: `ANTHROPIC_API_KEY`, `COPILOT_BASE_URL`, `GRAFT_PROVIDER`
+Environment overrides: `ANTHROPIC_API_KEY`, `COPILOT_BASE_URL`, `GRAFT_PROVIDER`, `GRAFT_MODEL`

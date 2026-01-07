@@ -426,3 +426,114 @@ func TestProxyManager_Models_ReturnsCopy(t *testing.T) {
 		t.Error("Models() should return a copy, not the original slice")
 	}
 }
+
+func TestReviewChanges(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := chatResponse{
+			Choices: []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}{
+				{Message: struct {
+					Content string `json:"content"`
+				}{Content: "# Code Review\n\nThis is a test review."}},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	p, _ := New(server.URL, "")
+	result, err := p.ReviewChanges(context.Background(), &provider.ReviewRequest{
+		Files:    []git.FileDiff{{Path: "main.go", Status: git.StatusModified}},
+		FullDiff: "+line1\n-line2",
+	})
+
+	if err != nil {
+		t.Fatalf("ReviewChanges() failed: %v", err)
+	}
+
+	if result.Content != "# Code Review\n\nThis is a test review." {
+		t.Errorf("Content = %q, want %q", result.Content, "# Code Review\n\nThis is a test review.")
+	}
+}
+
+func TestReviewChanges_WithSystemPrompt(t *testing.T) {
+	var receivedMessages []chatMessage
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		receivedMessages = req.Messages
+
+		resp := chatResponse{
+			Choices: []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}{
+				{Message: struct {
+					Content string `json:"content"`
+				}{Content: "Review content"}},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	p, _ := New(server.URL, "")
+	_, err := p.ReviewChanges(context.Background(), &provider.ReviewRequest{
+		Files:        []git.FileDiff{{Path: "main.go"}},
+		SystemPrompt: "You are a code review expert.",
+	})
+
+	if err != nil {
+		t.Fatalf("ReviewChanges() failed: %v", err)
+	}
+
+	if len(receivedMessages) != 2 {
+		t.Fatalf("expected 2 messages (system + user), got %d", len(receivedMessages))
+	}
+	if receivedMessages[0].Role != "system" {
+		t.Errorf("first message role = %q, want %q", receivedMessages[0].Role, "system")
+	}
+	if receivedMessages[0].Content != "You are a code review expert." {
+		t.Errorf("system message content = %q, want %q", receivedMessages[0].Content, "You are a code review expert.")
+	}
+}
+
+func TestReviewChanges_WithMaxTokens(t *testing.T) {
+	var receivedMaxTokens int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		receivedMaxTokens = req.MaxTokens
+
+		resp := chatResponse{
+			Choices: []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}{
+				{Message: struct {
+					Content string `json:"content"`
+				}{Content: "Review content"}},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	p, _ := New(server.URL, "")
+	_, err := p.ReviewChanges(context.Background(), &provider.ReviewRequest{
+		Files:   []git.FileDiff{{Path: "main.go"}},
+		Options: provider.ReviewOptions{MaxTokens: 16384},
+	})
+
+	if err != nil {
+		t.Fatalf("ReviewChanges() failed: %v", err)
+	}
+	if receivedMaxTokens != 16384 {
+		t.Errorf("MaxTokens = %d, want 16384", receivedMaxTokens)
+	}
+}

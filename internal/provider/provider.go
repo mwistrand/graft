@@ -20,6 +20,9 @@ type Provider interface {
 
 	// OrderFiles determines the logical review order for changed files.
 	OrderFiles(ctx context.Context, req *OrderRequest) (*OrderResponse, error)
+
+	// ReviewChanges performs a detailed code review of the changes.
+	ReviewChanges(ctx context.Context, req *ReviewRequest) (*ReviewResponse, error)
 }
 
 // SummarizeRequest contains the diff context for summarization.
@@ -183,5 +186,42 @@ func DefaultSummarizeOptions() SummarizeOptions {
 	return SummarizeOptions{
 		MaxTokens:   2048,
 		Temperature: 0.3,
+	}
+}
+
+// ReviewRequest contains the context for a detailed code review.
+type ReviewRequest struct {
+	// Files contains the changed files with their metadata.
+	Files []git.FileDiff
+
+	// Commits contains the commits being reviewed.
+	Commits []git.Commit
+
+	// FullDiff contains the complete diff content for analysis.
+	FullDiff string
+
+	// SystemPrompt is the review expert system prompt.
+	SystemPrompt string
+
+	// Options allows customizing review behavior.
+	Options ReviewOptions
+}
+
+// ReviewOptions allows customizing review behavior.
+type ReviewOptions struct {
+	// MaxTokens limits the response length.
+	MaxTokens int
+}
+
+// ReviewResponse contains the AI-generated detailed code review.
+type ReviewResponse struct {
+	// Content is the full markdown-formatted review.
+	Content string `json:"content"`
+}
+
+// DefaultReviewOptions returns sensible defaults for reviews.
+func DefaultReviewOptions() ReviewOptions {
+	return ReviewOptions{
+		MaxTokens: 8192,
 	}
 }

@@ -254,3 +254,63 @@ func ExtractJSON(text string) string {
 
 	return strings.TrimSpace(text)
 }
+
+// BuildReviewPrompt constructs the user prompt for a detailed code review.
+// The system prompt should be passed separately to the AI provider.
+func BuildReviewPrompt(req *ReviewRequest) string {
+	var b strings.Builder
+
+	b.WriteString(`Please review the following code changes and provide a detailed, constructive code review.
+
+`)
+
+	// Add commits section
+	if len(req.Commits) > 0 {
+		b.WriteString("## Commits\n")
+		for _, c := range req.Commits {
+			b.WriteString(fmt.Sprintf("### %s by %s\n", c.ShortHash, c.Author))
+			b.WriteString(c.Subject + "\n")
+			if c.Body != "" {
+				b.WriteString(c.Body + "\n")
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	// Add changed files section
+	b.WriteString("## Changed Files\n")
+	for _, f := range req.Files {
+		status := f.Status
+		if f.OldPath != "" {
+			status = fmt.Sprintf("%s from %s", status, f.OldPath)
+		}
+		b.WriteString(fmt.Sprintf("- %s (%s: +%d/-%d)\n", f.Path, status, f.Additions, f.Deletions))
+	}
+	b.WriteString("\n")
+
+	// Add diff content
+	if req.FullDiff != "" {
+		diff := req.FullDiff
+		const maxDiffLen = 80000
+		if len(diff) > maxDiffLen {
+			diff = diff[:maxDiffLen] + "\n\n... [diff truncated for length] ..."
+		}
+		b.WriteString("## Diff Content\n```diff\n")
+		b.WriteString(diff)
+		b.WriteString("\n```\n\n")
+	}
+
+	b.WriteString(`---
+
+Please provide your review in markdown format. Include:
+1. **Executive Summary**: Brief overview of the changes and their impact
+2. **Code Quality**: Analysis of code structure, readability, and maintainability
+3. **Security Considerations**: Any security concerns or best practices
+4. **Performance**: Potential performance implications
+5. **Suggestions**: Specific, actionable recommendations for improvement
+6. **Questions**: Any clarifying questions for the author
+
+Focus on being constructive and educational. Prioritize significant issues over minor stylistic preferences.`)
+
+	return b.String()
+}

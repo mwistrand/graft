@@ -170,7 +170,34 @@ graft review main --tests-first
 
 # Force refresh (bypass cache and re-analyze)
 graft review main --refresh
+
+# Generate detailed AI code review
+graft review main --ai-review
+
+# Write AI review to a file
+graft review main --ai-review --ai-review-output review.md
 ```
+
+### AI Code Review
+
+The `--ai-review` flag generates a detailed code review using the configured AI provider. The review includes:
+- Executive summary of the changes
+- Code quality analysis
+- Security considerations
+- Performance implications
+- Specific improvement suggestions
+
+```bash
+# Display review in console
+graft review main --ai-review
+
+# Save review to a file
+graft review main --ai-review --ai-review-output review.md
+```
+
+**Custom Review Prompt:** Place a custom system prompt at `.graft/code-reviewer.md` in your repository to override the default review approach.
+
+**Caching:** AI reviews are cached alongside summaries and ordering. Request the same review without `--ai-review-output` to display a previously generated review in the console.
 
 ### Response Caching
 
@@ -179,7 +206,7 @@ Graft caches AI responses to speed up subsequent reviews of the same commits. Th
 - The commit hashes being reviewed
 
 **How it works:**
-- First review: AI generates summary and ordering, results are cached
+- First review: AI generates summary, ordering, and review (if requested), results are cached
 - Subsequent reviews of same commits: Cached results are used instantly
 - Use `--refresh` to bypass the cache and get fresh AI analysis
 

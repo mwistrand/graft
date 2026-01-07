@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/mwistrand/graft/internal/git"
@@ -334,5 +336,75 @@ func TestContainsAny(t *testing.T) {
 				t.Errorf("containsAny(%q, %v) = %v, want %v", tt.s, tt.substrs, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadReviewPrompt(t *testing.T) {
+	t.Run("override file exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create .graft directory and override file
+		graftDir := tmpDir + "/.graft"
+		if err := os.MkdirAll(graftDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		overridePath := graftDir + "/code-reviewer.md"
+		expectedContent := "You are a custom code review expert."
+		if err := os.WriteFile(overridePath, []byte(expectedContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		content, err := loadReviewPrompt(tmpDir)
+		if err != nil {
+			t.Fatalf("loadReviewPrompt() failed: %v", err)
+		}
+		if content != expectedContent {
+			t.Errorf("content = %q, want %q", content, expectedContent)
+		}
+	})
+
+	t.Run("no override uses embedded default", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		content, err := loadReviewPrompt(tmpDir)
+		if err != nil {
+			t.Fatalf("loadReviewPrompt() failed: %v", err)
+		}
+		// Should return the embedded default prompt
+		if content == "" {
+			t.Error("content should not be empty when using default")
+		}
+		if !strings.Contains(content, "code reviewer") {
+			t.Error("content should contain 'code reviewer' from default prompt")
+		}
+	})
+}
+
+func TestOutputAIReview_ToFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputPath := tmpDir + "/review.md"
+	content := "# Code Review\n\nThis is a test review."
+
+	err := outputAIReview(content, outputPath)
+	if err != nil {
+		t.Fatalf("outputAIReview() failed: %v", err)
+	}
+
+	// Verify file was written
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+	if string(written) != content {
+		t.Errorf("written content = %q, want %q", string(written), content)
+	}
+}
+
+func TestOutputAIReview_ToConsole(t *testing.T) {
+	// Just verify it doesn't error - console output is hard to test
+	content := "# Code Review\n\nThis is a test review."
+	err := outputAIReview(content, "")
+	if err != nil {
+		t.Fatalf("outputAIReview() failed: %v", err)
 	}
 }

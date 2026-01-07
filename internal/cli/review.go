@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -18,18 +19,21 @@ import (
 	"github.com/mwistrand/graft/internal/provider"
 	"github.com/mwistrand/graft/internal/provider/claude"
 	"github.com/mwistrand/graft/internal/provider/copilot"
+	"github.com/mwistrand/graft/internal/provider/prompts"
 	"github.com/mwistrand/graft/internal/render"
 )
 
 var (
-	skipSummary  bool
-	skipOrdering bool
-	providerName string
-	modelName    string
-	noDelta      bool
-	testsFirst   bool
-	refresh      bool
-	noAnalyze    bool
+	skipSummary    bool
+	skipOrdering   bool
+	providerName   string
+	modelName      string
+	noDelta        bool
+	testsFirst     bool
+	refresh        bool
+	noAnalyze      bool
+	aiReview       bool
+	aiReviewOutput string
 )
 
 var reviewCmd = &cobra.Command{
@@ -59,6 +63,8 @@ func init() {
 	reviewCmd.Flags().BoolVar(&testsFirst, "tests-first", false, "Show test files before implementation")
 	reviewCmd.Flags().BoolVar(&refresh, "refresh", false, "Re-analyze repository and refresh AI cache")
 	reviewCmd.Flags().BoolVar(&noAnalyze, "no-analyze", false, "Skip repository analysis")
+	reviewCmd.Flags().BoolVar(&aiReview, "ai-review", false, "Generate detailed AI code review")
+	reviewCmd.Flags().StringVar(&aiReviewOutput, "ai-review-output", "", "Write AI review to file instead of console")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -273,8 +279,57 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Handle AI review generation
+	var aiReviewResponse *provider.ReviewResponse
+	var reviewFromCache bool
+	if aiReview {
+		// Check if we have cached review
+		if cachedReview != nil && cachedReview.Review != nil && !refresh {
+			Verbose("Using cached AI review")
+			aiReviewResponse = cachedReview.Review
+			reviewFromCache = true
+		} else if aiProvider == nil {
+			fmt.Println("Warning: AI review requested but no AI provider is configured")
+		} else {
+			// Need full diff for review if not already fetched
+			if fullDiff == "" {
+				Verbose("Getting full diff for AI review...")
+				fullDiff, err = repo.GetFullDiff(ctx, baseRef)
+				if err != nil {
+					return fmt.Errorf("getting full diff: %w", err)
+				}
+			}
+
+			// Load system prompt (uses .graft/code-reviewer.md override or embedded default)
+			systemPrompt, err := loadReviewPrompt(repoDir)
+			if err != nil {
+				return fmt.Errorf("loading review prompt: %w", err)
+			}
+
+			Verbose("Generating AI code review...")
+			fmt.Println("Generating detailed code review...")
+
+			aiReviewResponse, err = aiProvider.ReviewChanges(ctx, &provider.ReviewRequest{
+				Files:        diffResult.Files,
+				Commits:      diffResult.Commits,
+				FullDiff:     fullDiff,
+				SystemPrompt: systemPrompt,
+				Options:      provider.DefaultReviewOptions(),
+			})
+			if err != nil {
+				fmt.Printf("Warning: Failed to generate AI review: %v\n\n", err)
+			}
+		}
+	}
+
 	// Save to cache if we got new results from AI
-	if !summaryFromCache || !orderingFromCache {
+	if !summaryFromCache || !orderingFromCache || (aiReview && !reviewFromCache && aiReviewResponse != nil) {
+		// Preserve existing cached review if we didn't generate a new one
+		reviewToCache := aiReviewResponse
+		if reviewToCache == nil && cachedReview != nil {
+			reviewToCache = cachedReview.Review
+		}
+
 		newCache := &provider.CachedReview{
 			CacheKey: cacheKey,
 			BaseRef:  baseRef,
@@ -287,12 +342,20 @@ func runReview(cmd *cobra.Command, args []string) error {
 			}(),
 			Summary:  summary,
 			Ordering: orderedFiles,
+			Review:   reviewToCache,
 			CachedAt: time.Now(),
 		}
 		if err := reviewCache.Save(newCache); err != nil {
 			Verbose("Warning: failed to cache review: %v", err)
 		} else {
 			Verbose("Review cached (key: %s)", cacheKey)
+		}
+	}
+
+	// Output AI review if generated
+	if aiReviewResponse != nil {
+		if err := outputAIReview(aiReviewResponse.Content, aiReviewOutput); err != nil {
+			return fmt.Errorf("outputting AI review: %w", err)
 		}
 	}
 
@@ -514,6 +577,7 @@ func describeStatus(status string) string {
 	}
 }
 
+// containsAny returns true if s contains any of the given substrings.
 func containsAny(s string, substrs ...string) bool {
 	for _, substr := range substrs {
 		if strings.Contains(s, substr) {
@@ -614,4 +678,40 @@ func promptForAnalysisPermission() bool {
 
 	fmt.Println("Skipping repository analysis.")
 	return false
+}
+
+// loadReviewPrompt loads the review system prompt.
+// First checks for a custom override at .graft/code-reviewer.md in the repository.
+// Falls back to the embedded default prompt if no override exists.
+func loadReviewPrompt(repoDir string) (string, error) {
+	// Check for repository-specific override
+	overridePath := filepath.Join(repoDir, ".graft", "code-reviewer.md")
+	data, err := os.ReadFile(overridePath)
+	if err == nil {
+		Verbose("Using custom code reviewer prompt from %s", overridePath)
+		return string(data), nil
+	}
+	if !os.IsNotExist(err) {
+		return "", fmt.Errorf("reading review prompt override: %w", err)
+	}
+
+	// Use embedded default prompt
+	return prompts.DefaultCodeReviewerPrompt, nil
+}
+
+// outputAIReview writes the AI review to console or a file.
+func outputAIReview(content string, outputPath string) error {
+	if outputPath != "" {
+		if err := os.WriteFile(outputPath, []byte(content), 0600); err != nil {
+			return fmt.Errorf("writing review to file: %w", err)
+		}
+		fmt.Printf("AI review written to: %s\n\n", outputPath)
+	} else {
+		fmt.Println("\n" + strings.Repeat("=", 60))
+		fmt.Println("AI CODE REVIEW")
+		fmt.Println(strings.Repeat("=", 60) + "\n")
+		fmt.Println(content)
+		fmt.Println(strings.Repeat("=", 60) + "\n")
+	}
+	return nil
 }

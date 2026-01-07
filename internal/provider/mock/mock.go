@@ -19,11 +19,17 @@ type Provider struct {
 	// OrderFunc allows customizing the OrderFiles behavior.
 	OrderFunc func(ctx context.Context, req *provider.OrderRequest) (*provider.OrderResponse, error)
 
+	// ReviewFunc allows customizing the ReviewChanges behavior.
+	ReviewFunc func(ctx context.Context, req *provider.ReviewRequest) (*provider.ReviewResponse, error)
+
 	// SummarizeCalls tracks calls to SummarizeChanges.
 	SummarizeCalls []*provider.SummarizeRequest
 
 	// OrderCalls tracks calls to OrderFiles.
 	OrderCalls []*provider.OrderRequest
+
+	// ReviewCalls tracks calls to ReviewChanges.
+	ReviewCalls []*provider.ReviewRequest
 }
 
 // New creates a new mock provider with default behavior.
@@ -97,10 +103,25 @@ func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (
 	}, nil
 }
 
+// ReviewChanges returns a mock review or calls the custom function.
+func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewRequest) (*provider.ReviewResponse, error) {
+	p.ReviewCalls = append(p.ReviewCalls, req)
+
+	if p.ReviewFunc != nil {
+		return p.ReviewFunc(ctx, req)
+	}
+
+	// Default mock response
+	return &provider.ReviewResponse{
+		Content: "# Mock Code Review\n\n## Executive Summary\n\nThis is a mock code review.\n\n## Suggestions\n\n- Consider adding more tests\n",
+	}, nil
+}
+
 // Reset clears recorded calls.
 func (p *Provider) Reset() {
 	p.SummarizeCalls = nil
 	p.OrderCalls = nil
+	p.ReviewCalls = nil
 }
 
 // extractPaths returns the paths from a slice of FileDiffs.
@@ -112,6 +133,7 @@ func extractPaths(files []git.FileDiff) []string {
 	return paths
 }
 
+// categorizeFile returns a category based on the file path.
 func categorizeFile(path string) string {
 	switch {
 	case strings.Contains(path, "_test.go") || strings.Contains(path, "_test."):

@@ -17,6 +17,9 @@ func (p *testProvider) SummarizeChanges(ctx context.Context, req *SummarizeReque
 func (p *testProvider) OrderFiles(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
 	return &OrderResponse{Reasoning: "test"}, nil
 }
+func (p *testProvider) ReviewChanges(ctx context.Context, req *ReviewRequest) (*ReviewResponse, error) {
+	return &ReviewResponse{Content: "test"}, nil
+}
 
 func TestRegistryRegisterAndGet(t *testing.T) {
 	r := NewRegistry("default")

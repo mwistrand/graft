@@ -38,6 +38,9 @@ type CachedReview struct {
 	// Ordering contains the cached ordering response.
 	Ordering *OrderResponse `json:"ordering,omitempty"`
 
+	// Review contains the cached detailed code review response.
+	Review *ReviewResponse `json:"review,omitempty"`
+
 	// CachedAt is when this cache entry was created.
 	CachedAt time.Time `json:"cached_at"`
 }
