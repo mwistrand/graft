@@ -400,24 +400,39 @@ Space to toggle, Enter to confirm. Core/supporting selected by default.
 - Use `--major-only` to skip minor groups entirely (won't appear in the selector)
 - Files are displayed in group order, so you review one feature completely before the next
 
-### Delta Pager Controls
+### Diff Viewer Controls
 
-When viewing diffs through Delta, use standard pager controls:
+Graft displays diffs in an interactive TUI with file navigation:
+
+**File Navigation:**
 
 | Key | Action |
 |-----|--------|
-| `Space` / `Page Down` | Scroll down one page |
-| `b` / `Page Up` | Scroll up one page |
-| `j` / `↓` | Scroll down one line |
-| `k` / `↑` | Scroll up one line |
-| `g` | Go to start of file |
-| `G` | Go to end of file |
-| `q` | Quit current file (proceed to next) |
-| `/pattern` | Search for pattern |
-| `n` | Next search match |
-| `N` | Previous search match |
+| `n` | Next file |
+| `p` | Previous file |
+| `Ctrl+J` | Open file picker (jump to any file) |
+| `Ctrl+B` | Jump back to previous position |
+| `q` / `Ctrl+C` | Quit review |
 
-Files are displayed sequentially in the AI-determined order. After viewing each file's diff, press `q` to proceed to the next file.
+**Scrolling:**
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Scroll up/down one line |
+| `Page Up` / `Page Down` | Scroll up/down one page |
+| `Home` / `g` | Go to start of file |
+| `End` / `G` | Go to end of file |
+
+**File Picker (Ctrl+J):**
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate file list |
+| Type | Filter files by path |
+| `Enter` | Jump to selected file |
+| `Esc` | Cancel and return to current file |
+
+The jump-back feature (`Ctrl+B`) remembers your position history, so you can quickly check a related file and return to where you were.
 
 ## File Category Icons
 

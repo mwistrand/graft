@@ -17,6 +17,7 @@ import (
 	"github.com/mwistrand/graft/internal/git"
 	"github.com/mwistrand/graft/internal/prompt"
 	"github.com/mwistrand/graft/internal/provider"
+	"github.com/mwistrand/graft/internal/tui"
 	"github.com/mwistrand/graft/internal/provider/claude"
 	"github.com/mwistrand/graft/internal/provider/copilot"
 	"github.com/mwistrand/graft/internal/provider/prompts"
@@ -441,16 +442,9 @@ func runReview(cmd *cobra.Command, args []string) error {
 		filesToReview = buildFileList(diffResult.Files, orderedFiles)
 	}
 
-	// Display diffs
-	for i, file := range filesToReview {
-		if err := renderer.RenderFileHeader(&file, i+1, len(filesToReview)); err != nil {
-			return fmt.Errorf("rendering file header: %w", err)
-		}
-
-		if err := renderer.RenderFileDiff(ctx, repoDir, baseRef, file.Path, i+1, len(filesToReview)); err != nil {
-			// Non-fatal: continue with other files
-			fmt.Printf("Warning: Failed to render diff for %s: %v\n", file.Path, err)
-		}
+	// Display diffs with interactive TUI
+	if err := tui.Run(filesToReview, repoDir, baseRef, !noDelta); err != nil {
+		return fmt.Errorf("running review TUI: %w", err)
 	}
 
 	fmt.Println("\nReview complete!")
