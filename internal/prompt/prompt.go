@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/mwistrand/graft/internal/provider"
@@ -59,34 +60,76 @@ func SelectModel(models []provider.ModelInfo) (string, error) {
 	return selected, nil
 }
 
-// ConfirmContinue prompts the user to continue or quit.
-// Returns true if the user wants to continue, false to quit.
-// If not running in an interactive terminal, returns true (continue by default).
-func ConfirmContinue(message string) bool {
+// ConfirmContinueResult represents the result of a confirmation prompt.
+type ConfirmContinueResult struct {
+	Continue  bool // Whether the user wants to continue
+	TimedOut  bool // Whether the prompt timed out
+	Cancelled bool // Whether the user explicitly cancelled
+}
+
+// ConfirmContinue prompts the user to continue or quit with an optional timeout.
+// The timeout parameter specifies the maximum wait time. Use 0 to disable timeout.
+// Returns a result indicating whether to continue, if it timed out, or was cancelled.
+// If not running in an interactive terminal, returns Continue=true immediately.
+func ConfirmContinue(message string, timeout time.Duration) ConfirmContinueResult {
 	if !IsInteractive() {
-		return true
+		return ConfirmContinueResult{Continue: true}
 	}
 
 	if message == "" {
 		message = "Continue reviewing diffs?"
 	}
 
-	fmt.Printf("\n%s [Y/n] ", message)
-
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return true // On error, continue by default
+	// Show timeout info if enabled
+	if timeout > 0 {
+		fmt.Printf("\n%s [Y/n] (timeout in %v) ", message, timeout.Round(time.Minute))
+	} else {
+		fmt.Printf("\n%s [Y/n] ", message)
 	}
 
-	input = strings.TrimSpace(strings.ToLower(input))
-	// Default to yes if empty, or explicit yes
+	// Read input in a goroutine to allow timeout
+	type readResult struct {
+		input string
+		err   error
+	}
+	resultCh := make(chan readResult, 1)
+
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		resultCh <- readResult{input: input, err: err}
+	}()
+
+	// Wait for input or timeout
+	if timeout > 0 {
+		select {
+		case result := <-resultCh:
+			if result.err != nil {
+				return ConfirmContinueResult{Continue: true} // On error, continue by default
+			}
+			input := strings.TrimSpace(strings.ToLower(result.input))
+			if input == "" || input == "y" || input == "yes" {
+				fmt.Println()
+				return ConfirmContinueResult{Continue: true}
+			}
+			return ConfirmContinueResult{Cancelled: true}
+		case <-time.After(timeout):
+			fmt.Println("\n\nPrompt timed out. Exiting review.")
+			return ConfirmContinueResult{TimedOut: true}
+		}
+	}
+
+	// No timeout - wait indefinitely
+	result := <-resultCh
+	if result.err != nil {
+		return ConfirmContinueResult{Continue: true} // On error, continue by default
+	}
+	input := strings.TrimSpace(strings.ToLower(result.input))
 	if input == "" || input == "y" || input == "yes" {
 		fmt.Println()
-		return true
+		return ConfirmContinueResult{Continue: true}
 	}
-
-	return false
+	return ConfirmContinueResult{Cancelled: true}
 }
 
 // SelectGroups displays an interactive multi-select for choosing which groups to review.

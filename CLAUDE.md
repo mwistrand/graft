@@ -92,5 +92,22 @@ Key settings:
 - `provider`: "claude" or "copilot"
 - `anthropic-api-key`: For Claude
 - `copilot-base-url`: For Copilot proxy (default: http://localhost:4141)
+- `prompt-timeout`: Timeout in minutes for interactive prompts (default: 30, use 0 to disable)
 
-Environment overrides: `ANTHROPIC_API_KEY`, `COPILOT_BASE_URL`, `GRAFT_PROVIDER`, `GRAFT_MODEL`
+Environment overrides: `ANTHROPIC_API_KEY`, `COPILOT_BASE_URL`, `GRAFT_PROVIDER`, `GRAFT_MODEL`, `GRAFT_PROMPT_TIMEOUT`
+
+### Prompt Timeout
+
+Interactive prompts (like "Continue reviewing diffs?") will timeout after 30 minutes by default. This prevents orphaned graft processes when users forget to respond. Configure via:
+
+```bash
+# CLI flag (per-invocation)
+graft review main --prompt-timeout 60  # 60 minutes
+graft review main --prompt-timeout 0   # Disable timeout
+
+# Config file (persistent)
+graft config set prompt-timeout 60
+
+# Environment variable
+export GRAFT_PROMPT_TIMEOUT=60
+```

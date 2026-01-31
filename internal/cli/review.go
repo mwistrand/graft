@@ -34,6 +34,7 @@ var (
 	noAnalyze      bool
 	aiReview       bool
 	aiReviewOutput string
+	promptTimeout  int
 )
 
 var reviewCmd = &cobra.Command{
@@ -65,6 +66,7 @@ func init() {
 	reviewCmd.Flags().BoolVar(&noAnalyze, "no-analyze", false, "Skip repository analysis")
 	reviewCmd.Flags().BoolVar(&aiReview, "ai-review", false, "Generate detailed AI code review")
 	reviewCmd.Flags().StringVar(&aiReviewOutput, "ai-review-output", "", "Write AI review to file instead of console")
+	reviewCmd.Flags().IntVar(&promptTimeout, "prompt-timeout", -1, "Timeout in minutes for interactive prompts (0 = no timeout, default: 30)")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -308,7 +310,22 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// Prompt user to continue (after showing summary and AI review)
 	if summary != nil || aiReviewResponse != nil {
-		if !prompt.ConfirmContinue("") {
+		// Determine effective timeout (flag overrides config, -1 means use config)
+		effectiveTimeout := cfg.PromptTimeout
+		if promptTimeout >= 0 {
+			effectiveTimeout = promptTimeout
+		}
+
+		var timeoutDuration time.Duration
+		if effectiveTimeout > 0 {
+			timeoutDuration = time.Duration(effectiveTimeout) * time.Minute
+		}
+
+		result := prompt.ConfirmContinue("", timeoutDuration)
+		if result.TimedOut {
+			return fmt.Errorf("review timed out after %d minutes waiting for user input", effectiveTimeout)
+		}
+		if !result.Continue {
 			fmt.Println("Review cancelled.")
 			return nil
 		}

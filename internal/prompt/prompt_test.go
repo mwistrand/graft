@@ -44,19 +44,22 @@ func TestIsInteractive_InTests(t *testing.T) {
 }
 
 func TestConfirmContinue_NonInteractive(t *testing.T) {
-	// In test environment, stdin is not a terminal, so should return true (continue by default)
+	// In test environment, stdin is not a terminal, so should return Continue=true
 	if IsInteractive() {
 		t.Skip("skipping: stdin is a terminal in this test environment")
 	}
 
-	result := ConfirmContinue("")
-	if !result {
-		t.Error("expected true (continue) in non-interactive mode")
+	result := ConfirmContinue("", 0)
+	if !result.Continue {
+		t.Error("expected Continue=true in non-interactive mode")
+	}
+	if result.TimedOut {
+		t.Error("expected TimedOut=false in non-interactive mode")
 	}
 
-	result = ConfirmContinue("Custom message")
-	if !result {
-		t.Error("expected true (continue) in non-interactive mode with custom message")
+	result = ConfirmContinue("Custom message", 0)
+	if !result.Continue {
+		t.Error("expected Continue=true in non-interactive mode with custom message")
 	}
 }
 

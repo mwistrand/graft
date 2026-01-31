@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // Config holds all configuration for the graft CLI.
@@ -27,6 +28,11 @@ type Config struct {
 
 	// DeltaPath is the path to the delta binary. If empty, uses PATH lookup.
 	DeltaPath string `json:"delta_path,omitempty"`
+
+	// PromptTimeout is the timeout in minutes for interactive prompts.
+	// If the user doesn't respond within this time, the review exits.
+	// Set to 0 to disable timeout. Default is 30 minutes.
+	PromptTimeout int `json:"prompt_timeout,omitempty"`
 }
 
 // Load reads configuration from the default config file and environment variables.
@@ -128,6 +134,11 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("GRAFT_DELTA_PATH"); v != "" {
 		c.DeltaPath = v
 	}
+	if v := os.Getenv("GRAFT_PROMPT_TIMEOUT"); v != "" {
+		if timeout, err := strconv.Atoi(v); err == nil {
+			c.PromptTimeout = timeout
+		}
+	}
 }
 
 // Set updates a configuration key with the given value.
@@ -145,6 +156,15 @@ func (c *Config) Set(key, value string) error {
 		c.CopilotBaseURL = value
 	case "delta-path":
 		c.DeltaPath = value
+	case "prompt-timeout":
+		timeout, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid prompt-timeout value %q: must be an integer (minutes)", value)
+		}
+		if timeout < 0 {
+			return fmt.Errorf("invalid prompt-timeout value %q: must be >= 0", value)
+		}
+		c.PromptTimeout = timeout
 	default:
 		return fmt.Errorf("unknown configuration key: %s", key)
 	}
@@ -172,6 +192,8 @@ func (c *Config) Get(key string) (string, error) {
 		return c.CopilotBaseURL, nil
 	case "delta-path":
 		return c.DeltaPath, nil
+	case "prompt-timeout":
+		return strconv.Itoa(c.PromptTimeout), nil
 	default:
 		return "", fmt.Errorf("unknown configuration key: %s", key)
 	}

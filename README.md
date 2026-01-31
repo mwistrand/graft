@@ -176,6 +176,9 @@ graft review main --ai-review
 
 # Write AI review to a file
 graft review main --ai-review --ai-review-output review.md
+
+# Set prompt timeout (in minutes, 0 to disable)
+graft review main --prompt-timeout 60
 ```
 
 ### AI Code Review
@@ -260,6 +263,7 @@ graft config path
 | `anthropic-api-key` | Anthropic API key | `ANTHROPIC_API_KEY` |
 | `copilot-base-url` | Copilot proxy URL (default: http://localhost:4141) | `COPILOT_BASE_URL` |
 | `delta-path` | Path to Delta binary | `GRAFT_DELTA_PATH` |
+| `prompt-timeout` | Timeout in minutes for interactive prompts (default: 30, 0 to disable) | `GRAFT_PROMPT_TIMEOUT` |
 
 ## How It Works
 
@@ -281,9 +285,9 @@ graft config path
 
 4. **Continue Prompt**: After displaying the summary, graft prompts you to continue:
    ```
-   Continue reviewing diffs? [Y/n]
+   Continue reviewing diffs? [Y/n] (timeout in 30m)
    ```
-   Press Enter or `y` to proceed, or `n` to cancel the review.
+   Press Enter or `y` to proceed, or `n` to cancel the review. The prompt times out after 30 minutes by default to prevent orphaned processes. Configure with `--prompt-timeout` or `prompt-timeout` config.
 
 5. **Group Selection**: If multiple feature groups are detected, an interactive selector appears:
    ```

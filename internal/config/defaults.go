@@ -19,11 +19,16 @@ const (
 
 	// DefaultConfigFile is the configuration file name.
 	DefaultConfigFile = "config.json"
+
+	// DefaultPromptTimeout is the default timeout in minutes for interactive prompts.
+	// Set to 30 minutes. Use 0 to disable timeout.
+	DefaultPromptTimeout = 30
 )
 
 // DefaultConfig returns a Config with default values.
 func DefaultConfig() *Config {
 	return &Config{
-		Provider: DefaultProvider,
+		Provider:      DefaultProvider,
+		PromptTimeout: DefaultPromptTimeout,
 	}
 }
