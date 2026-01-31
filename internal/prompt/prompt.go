@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -133,6 +134,7 @@ func ConfirmContinue(message string, timeout time.Duration) ConfirmContinueResul
 }
 
 // SelectGroups displays an interactive multi-select for choosing which groups to review.
+// Groups are organized by significance tier (core, supporting, minor).
 // Returns the selected groups in their original priority order.
 // If not interactive or user selects nothing, returns all groups.
 func SelectGroups(groups []provider.OrderGroup, fileCounts map[string]int) ([]provider.OrderGroup, error) {
@@ -145,15 +147,28 @@ func SelectGroups(groups []provider.OrderGroup, fileCounts map[string]int) ([]pr
 		return groups, nil
 	}
 
-	// Build options with file counts
-	options := make([]huh.Option[string], len(groups))
-	for i, g := range groups {
+	// Sort groups by significance tier, then by priority within tier
+	sortedGroups := make([]provider.OrderGroup, len(groups))
+	copy(sortedGroups, groups)
+	sortGroupsBySignificance(sortedGroups)
+
+	// Build options with file counts and tier prefixes
+	options := make([]huh.Option[string], len(sortedGroups))
+	for i, g := range sortedGroups {
 		count := fileCounts[g.Name]
-		displayName := fmt.Sprintf("%s (%d files)", g.Name, count)
+		sig := provider.NormalizeSignificance(g.Significance)
+
+		// Add tier prefix for visual organization
+		tierPrefix := significanceTierPrefix(sig)
+
+		displayName := fmt.Sprintf("%s %s (%d files)", tierPrefix, g.Name, count)
 		if g.Description != "" {
-			displayName = fmt.Sprintf("%s - %s (%d files)", g.Name, g.Description, count)
+			displayName = fmt.Sprintf("%s %s - %s (%d files)", tierPrefix, g.Name, g.Description, count)
 		}
-		options[i] = huh.NewOption(displayName, g.Name).Selected(true)
+
+		// Default: core and supporting selected, minor deselected
+		selected := sig != provider.SignificanceMinor
+		options[i] = huh.NewOption(displayName, g.Name).Selected(selected)
 	}
 
 	var selected []string
@@ -161,7 +176,7 @@ func SelectGroups(groups []provider.OrderGroup, fileCounts map[string]int) ([]pr
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
 				Title("Select groups to review").
-				Description("Space to toggle, Enter to confirm. All selected by default.").
+				Description("Space to toggle, Enter to confirm. Core/supporting selected by default.").
 				Options(options...).
 				Value(&selected),
 		),
@@ -191,4 +206,30 @@ func SelectGroups(groups []provider.OrderGroup, fileCounts map[string]int) ([]pr
 	}
 
 	return result, nil
+}
+
+// sortGroupsBySignificance sorts groups by significance tier, then by priority within tier.
+func sortGroupsBySignificance(groups []provider.OrderGroup) {
+	sort.Slice(groups, func(i, j int) bool {
+		sigI := provider.SignificancePriority(provider.NormalizeSignificance(groups[i].Significance))
+		sigJ := provider.SignificancePriority(provider.NormalizeSignificance(groups[j].Significance))
+		if sigI != sigJ {
+			return sigI < sigJ
+		}
+		return groups[i].Priority < groups[j].Priority
+	})
+}
+
+// significanceTierPrefix returns a visual prefix for a significance tier.
+func significanceTierPrefix(sig provider.Significance) string {
+	switch sig {
+	case provider.SignificanceCore:
+		return "[core]"
+	case provider.SignificanceSupporting:
+		return "[supporting]"
+	case provider.SignificanceMinor:
+		return "[minor]"
+	default:
+		return "[core]"
+	}
 }

@@ -185,6 +185,9 @@ graft review main --ai-review --review-severity critical
 
 # Set prompt timeout (in minutes, 0 to disable)
 graft review main --prompt-timeout 60
+
+# Only review core and supporting groups, skip minor changes
+graft review main --major-only
 ```
 
 ### AI Code Review
@@ -368,15 +371,19 @@ graft config path
 
 ### Group Selection
 
-When the AI identifies multiple feature groups in your changes, you'll see an interactive selector:
+When the AI identifies multiple feature groups in your changes, you'll see an interactive selector. Groups are classified by significance tier:
+
+- **Core**: Major logic changes (new features, API changes, business logic)
+- **Supporting**: Tests, utilities, helpers
+- **Minor**: Config files, docs, formatting, dependency updates
 
 ```
 Select groups to review
-Space to toggle, Enter to confirm. All selected by default.
+Space to toggle, Enter to confirm. Core/supporting selected by default.
 
-> [x] User Authentication - Adds login and session management (3 files)
-  [x] API Endpoints - New user management endpoints (2 files)
-  [ ] Documentation - README updates (1 files)
+> [x] [core] User Authentication - Adds login and session management (3 files)
+  [x] [supporting] Unit Tests - Test coverage for auth (2 files)
+  [ ] [minor] Documentation - README updates (1 files)
 ```
 
 | Key | Action |
@@ -386,8 +393,8 @@ Space to toggle, Enter to confirm. All selected by default.
 | `Enter` | Confirm and start review |
 
 **Tips:**
-- All groups are selected by default - just press Enter to review everything
-- Deselect groups you want to skip (e.g., documentation-only changes)
+- Core and supporting groups are selected by default; minor groups are deselected
+- Use `--major-only` to skip minor groups entirely (won't appear in the selector)
 - Files are displayed in group order, so you review one feature completely before the next
 
 ### Delta Pager Controls

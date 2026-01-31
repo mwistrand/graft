@@ -1,5 +1,6 @@
 bin
 graft
+.graft/
 
 # Private files
 **/private_/

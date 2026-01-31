@@ -37,6 +37,7 @@ var (
 	promptTimeout    int
 	reviewCategories string
 	reviewSeverity   string
+	majorOnly        bool
 )
 
 var reviewCmd = &cobra.Command{
@@ -71,6 +72,7 @@ func init() {
 	reviewCmd.Flags().IntVar(&promptTimeout, "prompt-timeout", -1, "Timeout in minutes for interactive prompts (0 = no timeout, default: 30)")
 	reviewCmd.Flags().StringVar(&reviewCategories, "review-categories", "", "Focus AI review on specific categories (comma-separated: design,functionality,complexity,tests,naming,comments,style,documentation)")
 	reviewCmd.Flags().StringVar(&reviewSeverity, "review-severity", "", "Filter review output by minimum severity (critical, suggestion, nit)")
+	reviewCmd.Flags().BoolVar(&majorOnly, "major-only", false, "Only review core and supporting groups, skip minor changes")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -393,7 +395,14 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// If we have groups, let user select which to review
 	if orderedFiles != nil && len(orderedFiles.Groups) > 0 {
-		selectedGroups, err := promptGroupSelection(orderedFiles.Groups, orderedFiles.Files)
+		groupsToShow := orderedFiles.Groups
+
+		// Filter out minor groups if --major-only is set
+		if majorOnly {
+			groupsToShow, _ = filterMajorGroups(orderedFiles.Groups)
+		}
+
+		selectedGroups, err := promptGroupSelection(groupsToShow, orderedFiles.Files)
 		if err != nil {
 			fmt.Printf("Warning: Group selection failed: %v\n", err)
 			filesToReview = buildFileList(diffResult.Files, orderedFiles)
@@ -506,6 +515,28 @@ func buildFileList(files []git.FileDiff, aiOrder *provider.OrderResponse) []prov
 		}
 	}
 	return result
+}
+
+// filterMajorGroups removes minor groups from the list.
+// Returns the filtered groups and the count of removed groups.
+func filterMajorGroups(groups []provider.OrderGroup) ([]provider.OrderGroup, int) {
+	var major []provider.OrderGroup
+	minorCount := 0
+
+	for _, g := range groups {
+		sig := provider.NormalizeSignificance(g.Significance)
+		if sig == provider.SignificanceMinor {
+			minorCount++
+		} else {
+			major = append(major, g)
+		}
+	}
+
+	if minorCount > 0 {
+		fmt.Printf("Skipping %d minor group(s) (use without --major-only to include)\n\n", minorCount)
+	}
+
+	return major, minorCount
 }
 
 // promptGroupSelection presents an interactive menu for group selection.

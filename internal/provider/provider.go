@@ -108,6 +108,63 @@ type OrderResponse struct {
 	Reasoning string `json:"reasoning"`
 }
 
+// Significance indicates the importance tier of a group change.
+type Significance string
+
+const (
+	// SignificanceCore indicates major logic changes, new features, API changes.
+	SignificanceCore Significance = "core"
+	// SignificanceSupporting indicates tests, utilities, helpers.
+	SignificanceSupporting Significance = "supporting"
+	// SignificanceMinor indicates config, docs, formatting, dependency updates.
+	SignificanceMinor Significance = "minor"
+)
+
+// AllSignificanceTiers returns all significance tiers in priority order.
+func AllSignificanceTiers() []Significance {
+	return []Significance{
+		SignificanceCore,
+		SignificanceSupporting,
+		SignificanceMinor,
+	}
+}
+
+// SignificanceDisplayName returns a human-readable name for a significance tier.
+func SignificanceDisplayName(s Significance) string {
+	switch s {
+	case SignificanceCore:
+		return "Core Changes"
+	case SignificanceSupporting:
+		return "Supporting"
+	case SignificanceMinor:
+		return "Minor"
+	default:
+		return string(s)
+	}
+}
+
+// SignificancePriority returns the sort priority for a significance tier (lower = first).
+func SignificancePriority(s Significance) int {
+	switch s {
+	case SignificanceCore:
+		return 1
+	case SignificanceSupporting:
+		return 2
+	case SignificanceMinor:
+		return 3
+	default:
+		return 4
+	}
+}
+
+// NormalizeSignificance returns the significance, defaulting to "core" if empty.
+func NormalizeSignificance(s Significance) Significance {
+	if s == "" {
+		return SignificanceCore
+	}
+	return s
+}
+
 // OrderGroup represents a feature group of related files.
 type OrderGroup struct {
 	// Name is the group identifier (matches OrderedFile.Group).
@@ -118,6 +175,10 @@ type OrderGroup struct {
 
 	// Priority determines group review order (1 = first).
 	Priority int `json:"priority"`
+
+	// Significance indicates the importance tier (core, supporting, minor).
+	// Defaults to "core" if not specified for backwards compatibility.
+	Significance Significance `json:"significance,omitempty"`
 }
 
 // OrderedFile represents a file with its review priority and metadata.

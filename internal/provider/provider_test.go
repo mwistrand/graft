@@ -246,6 +246,59 @@ func TestStructuredReview_CountBySeverity(t *testing.T) {
 	})
 }
 
+func TestSignificanceTypes(t *testing.T) {
+	t.Run("AllSignificanceTiers", func(t *testing.T) {
+		tiers := AllSignificanceTiers()
+		if len(tiers) != 3 {
+			t.Errorf("expected 3 tiers, got %d", len(tiers))
+		}
+		// Verify order: core, supporting, minor
+		expected := []Significance{SignificanceCore, SignificanceSupporting, SignificanceMinor}
+		for i, tier := range tiers {
+			if tier != expected[i] {
+				t.Errorf("tier[%d] = %q, want %q", i, tier, expected[i])
+			}
+		}
+	})
+
+	t.Run("SignificanceDisplayName", func(t *testing.T) {
+		tests := []struct {
+			sig  Significance
+			want string
+		}{
+			{SignificanceCore, "Core Changes"},
+			{SignificanceSupporting, "Supporting"},
+			{SignificanceMinor, "Minor"},
+			{Significance("unknown"), "unknown"},
+		}
+		for _, tt := range tests {
+			got := SignificanceDisplayName(tt.sig)
+			if got != tt.want {
+				t.Errorf("SignificanceDisplayName(%q) = %q, want %q", tt.sig, got, tt.want)
+			}
+		}
+	})
+
+	t.Run("SignificancePriority", func(t *testing.T) {
+		// Core should come first (lowest priority number)
+		if SignificancePriority(SignificanceCore) >= SignificancePriority(SignificanceSupporting) {
+			t.Error("core should have lower priority than supporting")
+		}
+		if SignificancePriority(SignificanceSupporting) >= SignificancePriority(SignificanceMinor) {
+			t.Error("supporting should have lower priority than minor")
+		}
+	})
+
+	t.Run("NormalizeSignificance", func(t *testing.T) {
+		if NormalizeSignificance("") != SignificanceCore {
+			t.Error("empty significance should default to core")
+		}
+		if NormalizeSignificance(SignificanceMinor) != SignificanceMinor {
+			t.Error("non-empty significance should be preserved")
+		}
+	})
+}
+
 func TestAllReviewCategories(t *testing.T) {
 	categories := AllReviewCategories()
 

@@ -327,6 +327,41 @@ func TestBuildOrderPrompt_GroupJSONSchema(t *testing.T) {
 	}
 }
 
+func TestBuildOrderPrompt_SignificanceClassification(t *testing.T) {
+	req := &OrderRequest{
+		Files: []git.FileDiff{{Path: "main.go"}},
+	}
+
+	prompt := BuildOrderPrompt(req)
+
+	// Check that significance is in the JSON schema
+	if !strings.Contains(prompt, `"significance"`) {
+		t.Error("prompt JSON schema should contain significance field")
+	}
+	if !strings.Contains(prompt, "core|supporting|minor") {
+		t.Error("prompt should show significance options")
+	}
+
+	// Check significance classification guidance
+	if !strings.Contains(prompt, "Significance Classification") {
+		t.Error("prompt should contain Significance Classification section")
+	}
+	if !strings.Contains(prompt, "Major logic changes") {
+		t.Error("prompt should describe core significance")
+	}
+	if !strings.Contains(prompt, "support or validate") {
+		t.Error("prompt should describe supporting significance")
+	}
+	if !strings.Contains(prompt, "Configuration files") {
+		t.Error("prompt should describe minor significance")
+	}
+
+	// Check significance is required
+	if !strings.Contains(prompt, "Every group MUST have a significance level") {
+		t.Error("prompt should require significance for every group")
+	}
+}
+
 func TestBuildReviewPrompt(t *testing.T) {
 	req := &ReviewRequest{
 		Files: []git.FileDiff{

@@ -573,3 +573,101 @@ func TestOutputAIReview_SeverityFilter(t *testing.T) {
 		t.Error("output should NOT contain nit issue when filtering for suggestion")
 	}
 }
+
+func TestFilterMajorGroups(t *testing.T) {
+	groups := []provider.OrderGroup{
+		{Name: "Core Feature", Significance: provider.SignificanceCore},
+		{Name: "Tests", Significance: provider.SignificanceSupporting},
+		{Name: "Config", Significance: provider.SignificanceMinor},
+		{Name: "Docs", Significance: provider.SignificanceMinor},
+		{Name: "Another Core", Significance: provider.SignificanceCore},
+	}
+
+	filtered, minorCount := filterMajorGroups(groups)
+
+	if minorCount != 2 {
+		t.Errorf("expected 2 minor groups, got %d", minorCount)
+	}
+	if len(filtered) != 3 {
+		t.Errorf("expected 3 major groups, got %d", len(filtered))
+	}
+
+	// Verify no minor groups in result
+	for _, g := range filtered {
+		if g.Significance == provider.SignificanceMinor {
+			t.Errorf("found minor group %q in filtered result", g.Name)
+		}
+	}
+}
+
+func TestFilterMajorGroups_NoMinor(t *testing.T) {
+	groups := []provider.OrderGroup{
+		{Name: "Core Feature", Significance: provider.SignificanceCore},
+		{Name: "Tests", Significance: provider.SignificanceSupporting},
+	}
+
+	filtered, minorCount := filterMajorGroups(groups)
+
+	if minorCount != 0 {
+		t.Errorf("expected 0 minor groups, got %d", minorCount)
+	}
+	if len(filtered) != 2 {
+		t.Errorf("expected 2 groups, got %d", len(filtered))
+	}
+}
+
+func TestFilterMajorGroups_EmptySignificance(t *testing.T) {
+	// Groups without significance should be treated as "core" and kept
+	groups := []provider.OrderGroup{
+		{Name: "Unspecified", Significance: ""},
+		{Name: "Minor", Significance: provider.SignificanceMinor},
+	}
+
+	filtered, minorCount := filterMajorGroups(groups)
+
+	if minorCount != 1 {
+		t.Errorf("expected 1 minor group, got %d", minorCount)
+	}
+	if len(filtered) != 1 {
+		t.Errorf("expected 1 group, got %d", len(filtered))
+	}
+	if filtered[0].Name != "Unspecified" {
+		t.Errorf("expected 'Unspecified' to be kept, got %q", filtered[0].Name)
+	}
+}
+
+func TestFilterMajorGroups_EmptyInput(t *testing.T) {
+	filtered, minorCount := filterMajorGroups(nil)
+
+	if minorCount != 0 {
+		t.Errorf("expected 0 minor groups, got %d", minorCount)
+	}
+	if len(filtered) != 0 {
+		t.Errorf("expected 0 groups, got %d", len(filtered))
+	}
+
+	filtered, minorCount = filterMajorGroups([]provider.OrderGroup{})
+
+	if minorCount != 0 {
+		t.Errorf("expected 0 minor groups, got %d", minorCount)
+	}
+	if len(filtered) != 0 {
+		t.Errorf("expected 0 groups, got %d", len(filtered))
+	}
+}
+
+func TestFilterMajorGroups_AllMinor(t *testing.T) {
+	groups := []provider.OrderGroup{
+		{Name: "Config", Significance: provider.SignificanceMinor},
+		{Name: "Docs", Significance: provider.SignificanceMinor},
+	}
+
+	filtered, minorCount := filterMajorGroups(groups)
+
+	if minorCount != 2 {
+		t.Errorf("expected 2 minor groups, got %d", minorCount)
+	}
+	if len(filtered) != 0 {
+		t.Errorf("expected 0 groups after filtering, got %d", len(filtered))
+	}
+}

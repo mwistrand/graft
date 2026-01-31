@@ -59,11 +59,23 @@ type Provider interface {
 ```go
 type OrderResponse struct {
     Files     []OrderedFile  // Files with Group field
-    Groups    []OrderGroup   // Group metadata (name, description, priority)
+    Groups    []OrderGroup   // Group metadata (name, description, priority, significance)
     Reasoning string
 }
+
+type OrderGroup struct {
+    Name         string       // Group identifier
+    Description  string       // What this feature/change accomplishes
+    Priority     int          // Group review order (1 = first)
+    Significance Significance // Importance tier: core, supporting, minor
+}
 ```
-The AI identifies logical feature groups and assigns each file to a group. Users can select which groups to review via an interactive multi-select prompt.
+The AI identifies logical feature groups, assigns each file to a group, and classifies groups by significance:
+- **core**: Major logic changes (new features, API changes, business logic)
+- **supporting**: Tests, utilities, helpers
+- **minor**: Config files, docs, formatting, dependency updates
+
+Use `--major-only` to skip minor groups entirely.
 
 **Repository Analysis**: The `analysis` package scans repo structure to detect project type (frontend/backend/fullstack) and frameworks, caching results at `.graft/analysis.json`.
 

@@ -135,3 +135,73 @@ func TestSelectGroups_NonInteractive_SingleGroup(t *testing.T) {
 		t.Errorf("expected group name 'Only Group', got %q", result[0].Name)
 	}
 }
+
+func TestSortGroupsBySignificance(t *testing.T) {
+	groups := []provider.OrderGroup{
+		{Name: "Minor 1", Significance: provider.SignificanceMinor, Priority: 1},
+		{Name: "Core 2", Significance: provider.SignificanceCore, Priority: 2},
+		{Name: "Supporting 1", Significance: provider.SignificanceSupporting, Priority: 1},
+		{Name: "Core 1", Significance: provider.SignificanceCore, Priority: 1},
+		{Name: "Minor 2", Significance: provider.SignificanceMinor, Priority: 2},
+	}
+
+	sortGroupsBySignificance(groups)
+
+	// Expected order: Core 1, Core 2, Supporting 1, Minor 1, Minor 2
+	expected := []string{"Core 1", "Core 2", "Supporting 1", "Minor 1", "Minor 2"}
+	for i, g := range groups {
+		if g.Name != expected[i] {
+			t.Errorf("groups[%d] = %q, want %q", i, g.Name, expected[i])
+		}
+	}
+}
+
+func TestSortGroupsBySignificance_EmptySignificance(t *testing.T) {
+	// Groups without significance should be treated as "core" (default)
+	groups := []provider.OrderGroup{
+		{Name: "Minor", Significance: provider.SignificanceMinor, Priority: 1},
+		{Name: "Unspecified", Significance: "", Priority: 1}, // Should default to core
+	}
+
+	sortGroupsBySignificance(groups)
+
+	// Unspecified (treated as core) should come before minor
+	if groups[0].Name != "Unspecified" {
+		t.Errorf("expected 'Unspecified' first (defaults to core), got %q", groups[0].Name)
+	}
+}
+
+func TestSignificanceTierPrefix(t *testing.T) {
+	tests := []struct {
+		sig  provider.Significance
+		want string
+	}{
+		{provider.SignificanceCore, "[core]"},
+		{provider.SignificanceSupporting, "[supporting]"},
+		{provider.SignificanceMinor, "[minor]"},
+		{provider.Significance(""), "[core]"}, // Empty defaults to core
+	}
+
+	for _, tt := range tests {
+		got := significanceTierPrefix(tt.sig)
+		if got != tt.want {
+			t.Errorf("significanceTierPrefix(%q) = %q, want %q", tt.sig, got, tt.want)
+		}
+	}
+}
+
+func TestSortGroupsBySignificance_EmptySlice(t *testing.T) {
+	var groups []provider.OrderGroup
+	sortGroupsBySignificance(groups)
+
+	if len(groups) != 0 {
+		t.Errorf("expected empty slice, got %d elements", len(groups))
+	}
+
+	groups = []provider.OrderGroup{}
+	sortGroupsBySignificance(groups)
+
+	if len(groups) != 0 {
+		t.Errorf("expected empty slice, got %d elements", len(groups))
+	}
+}

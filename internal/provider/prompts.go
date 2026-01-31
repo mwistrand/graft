@@ -135,7 +135,8 @@ Respond with a JSON object in this exact format:
     {
       "name": "Short feature name (2-4 words)",
       "description": "Brief explanation of what this feature/change accomplishes",
-      "priority": 1
+      "priority": 1,
+      "significance": "core|supporting|minor"
     }
   ],
   "files": [
@@ -150,6 +151,26 @@ Respond with a JSON object in this exact format:
   "reasoning": "Brief explanation of the grouping and ordering strategy"
 }
 
+## Significance Classification
+
+Assign each group a significance level based on the nature of changes:
+
+- **core**: Major logic changes that affect functionality
+  - New features, API changes, business logic modifications
+  - Data model changes, database schema updates
+  - Security-related changes, authentication/authorization
+
+- **supporting**: Changes that support or validate core logic
+  - Test files (unit tests, integration tests)
+  - Utility functions and helpers
+  - Internal refactoring that doesn't change behavior
+
+- **minor**: Low-impact changes that rarely need deep review
+  - Configuration files, environment settings
+  - Documentation, comments, README updates
+  - Formatting, linting fixes, dependency updates
+  - Generated code, lock files
+
 ## Grouping Strategy
 
 1. **Identify features**: Look for related changes that form a cohesive unit:
@@ -162,9 +183,13 @@ Respond with a JSON object in this exact format:
    - "API Error Handling" (not "misc fixes")
    - "Database Migration" (not "db stuff")
 
-3. **Order groups**: Put foundational/dependency changes first, then features that build on them
+3. **Order groups by significance first, then by dependency**:
+   - Core groups first (main features, logic changes)
+   - Supporting groups next (tests, utilities)
+   - Minor groups last (config, docs)
+   - Within each significance level, put foundational changes before dependent ones
 
-4. **Handle miscellaneous files**: Group standalone config files, docs, or unrelated small changes into a "Configuration" or "Miscellaneous" group
+4. **Handle miscellaneous files**: Group standalone config files, docs, or unrelated small changes into a "Configuration" or "Miscellaneous" group with significance "minor"
 
 ## File Ordering Within Groups
 
@@ -202,6 +227,7 @@ Adapt ordering based on the project type:
 Group names should be 2-4 words.
 Priority 1 = review first, higher numbers = later.
 Every file MUST have a group assigned.
+Every group MUST have a significance level (core, supporting, or minor).
 Return ONLY valid JSON, no additional text.`)
 
 	return b.String()
