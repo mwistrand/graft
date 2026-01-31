@@ -598,3 +598,121 @@ func TestReviewCache_PartialCache_NoReview(t *testing.T) {
 		t.Error("Review should be nil")
 	}
 }
+
+func TestReviewCache_BackwardCompatibility_LegacyReviewFormat(t *testing.T) {
+	// Test that old cached reviews without the "structured" field still load correctly
+	tmpDir := t.TempDir()
+	cache := NewReviewCache(tmpDir)
+
+	// Create cache directory
+	cacheDir := cache.CacheDirectory()
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a legacy cache file (old format without "structured" field)
+	legacyJSON := `{
+  "cache_key": "legacy123",
+  "base_ref": "main",
+  "commit_hashes": ["abc123"],
+  "review": {
+    "content": "# Legacy Review\n\nThis is an old-style review without structured data."
+  },
+  "cached_at": "2024-01-01T00:00:00Z"
+}`
+
+	if err := os.WriteFile(cache.CachePath("legacy123"), []byte(legacyJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load the legacy cache
+	loaded, err := cache.Load("legacy123")
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("Load() returned nil for valid legacy cache")
+	}
+
+	// Verify review loaded correctly
+	if loaded.Review == nil {
+		t.Fatal("Review should not be nil")
+	}
+	if loaded.Review.Content == "" {
+		t.Error("Review.Content should contain the legacy content")
+	}
+	if loaded.Review.Content != "# Legacy Review\n\nThis is an old-style review without structured data." {
+		t.Errorf("Review.Content = %q, unexpected content", loaded.Review.Content)
+	}
+	// Structured should be nil for legacy reviews
+	if loaded.Review.Structured != nil {
+		t.Error("Review.Structured should be nil for legacy cache")
+	}
+}
+
+func TestReviewCache_NewReviewWithStructured(t *testing.T) {
+	// Test that new reviews with structured data save and load correctly
+	tmpDir := t.TempDir()
+	cache := NewReviewCache(tmpDir)
+
+	review := &CachedReview{
+		CacheKey:     "structured123",
+		BaseRef:      "main",
+		CommitHashes: []string{"abc123"},
+		Review: &ReviewResponse{
+			Content: "## Summary\n\nGenerated markdown content",
+			Structured: &StructuredReview{
+				Summary: "This PR adds authentication support.",
+				Comments: []ReviewComment{
+					{
+						Category:    CategoryDesign,
+						Severity:    SeverityCritical,
+						File:        "auth/handler.go",
+						Line:        42,
+						Title:       "Missing error handling",
+						Description: "The error from ValidateToken is ignored.",
+					},
+					{
+						Category:    CategoryPraise,
+						Severity:    SeveritySuggestion,
+						Title:       "Good test coverage",
+						Description: "Comprehensive tests.",
+					},
+				},
+			},
+		},
+		CachedAt: time.Now(),
+	}
+
+	if err := cache.Save(review); err != nil {
+		t.Fatalf("Save() failed: %v", err)
+	}
+
+	// Load and verify
+	loaded, err := cache.Load("structured123")
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("Load() returned nil")
+	}
+
+	if loaded.Review == nil {
+		t.Fatal("Review should not be nil")
+	}
+	if loaded.Review.Content == "" {
+		t.Error("Review.Content should not be empty")
+	}
+	if loaded.Review.Structured == nil {
+		t.Fatal("Review.Structured should not be nil")
+	}
+	if loaded.Review.Structured.Summary != "This PR adds authentication support." {
+		t.Errorf("Structured.Summary = %q, want 'This PR adds authentication support.'", loaded.Review.Structured.Summary)
+	}
+	if len(loaded.Review.Structured.Comments) != 2 {
+		t.Errorf("len(Structured.Comments) = %d, want 2", len(loaded.Review.Structured.Comments))
+	}
+	if loaded.Review.Structured.Comments[0].Category != CategoryDesign {
+		t.Errorf("Comments[0].Category = %q, want %q", loaded.Review.Structured.Comments[0].Category, CategoryDesign)
+	}
+}

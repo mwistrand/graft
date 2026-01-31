@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/mwistrand/graft/internal/git"
 )
@@ -211,12 +212,187 @@ type ReviewRequest struct {
 type ReviewOptions struct {
 	// MaxTokens limits the response length.
 	MaxTokens int
+
+	// Categories limits the review to specific categories (empty = all).
+	Categories []ReviewCategory
+}
+
+// ReviewSeverity indicates the importance of a review comment.
+type ReviewSeverity string
+
+const (
+	// SeverityCritical indicates a must-fix issue (bugs, security, design flaws).
+	SeverityCritical ReviewSeverity = "critical"
+	// SeveritySuggestion indicates a should-consider improvement.
+	SeveritySuggestion ReviewSeverity = "suggestion"
+	// SeverityNit indicates a minor/optional issue (style, preferences).
+	SeverityNit ReviewSeverity = "nit"
+)
+
+// ReviewCategory represents a Google code review checklist category.
+type ReviewCategory string
+
+const (
+	CategoryDesign        ReviewCategory = "design"
+	CategoryFunctionality ReviewCategory = "functionality"
+	CategoryComplexity    ReviewCategory = "complexity"
+	CategoryTests         ReviewCategory = "tests"
+	CategoryNaming        ReviewCategory = "naming"
+	CategoryComments      ReviewCategory = "comments"
+	CategoryStyle         ReviewCategory = "style"
+	CategoryDocumentation ReviewCategory = "documentation"
+	CategoryPraise        ReviewCategory = "praise"
+)
+
+// AllReviewCategories returns all review categories in display order.
+func AllReviewCategories() []ReviewCategory {
+	return []ReviewCategory{
+		CategoryDesign,
+		CategoryFunctionality,
+		CategoryComplexity,
+		CategoryTests,
+		CategoryNaming,
+		CategoryComments,
+		CategoryStyle,
+		CategoryDocumentation,
+		CategoryPraise,
+	}
+}
+
+// ReviewComment represents a single finding from the code review.
+// Each comment belongs to a category and has a severity level.
+type ReviewComment struct {
+	// Category is the review category this comment belongs to.
+	Category ReviewCategory `json:"category"`
+	// Severity indicates the importance of this finding.
+	Severity ReviewSeverity `json:"severity"`
+	// File is the file path (optional for general comments).
+	File string `json:"file,omitempty"`
+	// Line is the line number (0 if not applicable).
+	Line int `json:"line,omitempty"`
+	// Title is a short summary (1 line).
+	Title string `json:"title"`
+	// Description is the detailed explanation.
+	Description string `json:"description"`
+	// Suggestion is an optional code suggestion.
+	Suggestion string `json:"suggestion,omitempty"`
+}
+
+// StructuredReview contains categorized review findings.
+type StructuredReview struct {
+	// Summary is an executive summary (2-3 sentences).
+	Summary string `json:"summary"`
+	// Comments contains all findings, categorized.
+	Comments []ReviewComment `json:"comments"`
+}
+
+// CommentsByCategory returns comments grouped by category.
+func (s *StructuredReview) CommentsByCategory() map[ReviewCategory][]ReviewComment {
+	result := make(map[ReviewCategory][]ReviewComment)
+	for _, c := range s.Comments {
+		result[c.Category] = append(result[c.Category], c)
+	}
+	return result
+}
+
+// CountBySeverity returns the count of comments for each severity level.
+func (s *StructuredReview) CountBySeverity() map[ReviewSeverity]int {
+	result := make(map[ReviewSeverity]int)
+	for _, c := range s.Comments {
+		result[c.Severity]++
+	}
+	return result
+}
+
+// FilterBySeverity returns a new StructuredReview with only comments at or above the minimum severity.
+// Severity order: critical > suggestion > nit
+func (s *StructuredReview) FilterBySeverity(minSeverity ReviewSeverity) *StructuredReview {
+	if minSeverity == "" {
+		return s
+	}
+
+	minLevel := severityLevel(minSeverity)
+	filtered := &StructuredReview{
+		Summary:  s.Summary,
+		Comments: make([]ReviewComment, 0),
+	}
+
+	for _, c := range s.Comments {
+		if severityLevel(c.Severity) >= minLevel {
+			filtered.Comments = append(filtered.Comments, c)
+		}
+	}
+
+	return filtered
+}
+
+// severityLevel returns a numeric level for severity comparison (higher = more severe).
+func severityLevel(s ReviewSeverity) int {
+	switch s {
+	case SeverityCritical:
+		return 3
+	case SeveritySuggestion:
+		return 2
+	case SeverityNit:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// ParseReviewCategories parses a comma-separated list of category names.
+func ParseReviewCategories(s string) []ReviewCategory {
+	if s == "" {
+		return nil
+	}
+
+	parts := splitAndTrim(s, ",")
+	categories := make([]ReviewCategory, 0, len(parts))
+
+	for _, p := range parts {
+		cat := ReviewCategory(p)
+		// Validate it's a known category
+		switch cat {
+		case CategoryDesign, CategoryFunctionality, CategoryComplexity,
+			CategoryTests, CategoryNaming, CategoryComments,
+			CategoryStyle, CategoryDocumentation, CategoryPraise:
+			categories = append(categories, cat)
+		}
+	}
+
+	return categories
+}
+
+// ParseReviewSeverity parses a severity string.
+func ParseReviewSeverity(s string) ReviewSeverity {
+	switch ReviewSeverity(s) {
+	case SeverityCritical, SeveritySuggestion, SeverityNit:
+		return ReviewSeverity(s)
+	default:
+		return ""
+	}
+}
+
+// splitAndTrim splits a string and trims whitespace from each part.
+func splitAndTrim(s, sep string) []string {
+	var result []string
+	for _, part := range strings.Split(s, sep) {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // ReviewResponse contains the AI-generated detailed code review.
 type ReviewResponse struct {
-	// Content is the full markdown-formatted review.
+	// Content is the full markdown-formatted review (legacy, for backwards compat).
 	Content string `json:"content"`
+
+	// Structured contains categorized review findings.
+	// Will be nil for legacy cached reviews.
+	Structured *StructuredReview `json:"structured,omitempty"`
 }
 
 // DefaultReviewOptions returns sensible defaults for reviews.

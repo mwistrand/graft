@@ -142,7 +142,8 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 		return nil, errors.New("empty response from Claude")
 	}
 
-	return &provider.ReviewResponse{Content: text}, nil
+	// Parse structured review (falls back to raw content on parse error)
+	return provider.ParseStructuredReview(text), nil
 }
 
 // extractTextContent extracts the text content from a Claude response.

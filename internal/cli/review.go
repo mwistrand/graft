@@ -24,17 +24,19 @@ import (
 )
 
 var (
-	skipSummary    bool
-	skipOrdering   bool
-	providerName   string
-	modelName      string
-	noDelta        bool
-	testsFirst     bool
-	refresh        bool
-	noAnalyze      bool
-	aiReview       bool
-	aiReviewOutput string
-	promptTimeout  int
+	skipSummary      bool
+	skipOrdering     bool
+	providerName     string
+	modelName        string
+	noDelta          bool
+	testsFirst       bool
+	refresh          bool
+	noAnalyze        bool
+	aiReview         bool
+	aiReviewOutput   string
+	promptTimeout    int
+	reviewCategories string
+	reviewSeverity   string
 )
 
 var reviewCmd = &cobra.Command{
@@ -67,6 +69,8 @@ func init() {
 	reviewCmd.Flags().BoolVar(&aiReview, "ai-review", false, "Generate detailed AI code review")
 	reviewCmd.Flags().StringVar(&aiReviewOutput, "ai-review-output", "", "Write AI review to file instead of console")
 	reviewCmd.Flags().IntVar(&promptTimeout, "prompt-timeout", -1, "Timeout in minutes for interactive prompts (0 = no timeout, default: 30)")
+	reviewCmd.Flags().StringVar(&reviewCategories, "review-categories", "", "Focus AI review on specific categories (comma-separated: design,functionality,complexity,tests,naming,comments,style,documentation)")
+	reviewCmd.Flags().StringVar(&reviewSeverity, "review-severity", "", "Filter review output by minimum severity (critical, suggestion, nit)")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -284,12 +288,15 @@ func runReview(cmd *cobra.Command, args []string) error {
 			Verbose("Generating AI code review...")
 			fmt.Println("Generating detailed code review...")
 
+			reviewOpts := provider.DefaultReviewOptions()
+			reviewOpts.Categories = provider.ParseReviewCategories(reviewCategories)
+
 			aiReviewResponse, err = aiProvider.ReviewChanges(ctx, &provider.ReviewRequest{
 				Files:        diffResult.Files,
 				Commits:      diffResult.Commits,
 				FullDiff:     fullDiff,
 				SystemPrompt: systemPrompt,
-				Options:      provider.DefaultReviewOptions(),
+				Options:      reviewOpts,
 			})
 			if err != nil {
 				fmt.Printf("Warning: Failed to generate AI review: %v\n\n", err)
@@ -300,7 +307,8 @@ func runReview(cmd *cobra.Command, args []string) error {
 	// Output AI review before prompting to continue
 	if aiReview {
 		if aiReviewResponse != nil {
-			if err := outputAIReview(aiReviewResponse.Content, aiReviewOutput); err != nil {
+			severityFilter := provider.ParseReviewSeverity(reviewSeverity)
+			if err := outputAIReview(aiReviewResponse, aiReviewOutput, severityFilter); err != nil {
 				return fmt.Errorf("outputting AI review: %w", err)
 			}
 		} else {
@@ -721,12 +729,27 @@ func loadReviewPrompt(repoDir string) (string, error) {
 }
 
 // outputAIReview writes the AI review to console or a file.
-func outputAIReview(content string, outputPath string) error {
-	if content == "" {
+// If severityFilter is set, only comments at or above that severity level are shown.
+func outputAIReview(resp *provider.ReviewResponse, outputPath string, severityFilter provider.ReviewSeverity) error {
+	if resp == nil || (resp.Content == "" && resp.Structured == nil) {
 		return fmt.Errorf("AI review content is empty")
 	}
 
+	// Apply severity filter to structured review if present
+	structured := resp.Structured
+	if structured != nil && severityFilter != "" {
+		structured = structured.FilterBySeverity(severityFilter)
+	}
+
 	if outputPath != "" {
+		// Write markdown content to file
+		var content string
+		if structured != nil {
+			content = provider.GenerateMarkdownFromReview(structured)
+		} else {
+			content = resp.Content
+		}
+
 		// Create parent directory if it doesn't exist
 		dir := filepath.Dir(outputPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -737,11 +760,138 @@ func outputAIReview(content string, outputPath string) error {
 		}
 		fmt.Printf("AI review written to: %s\n\n", outputPath)
 	} else {
+		// Console output
 		fmt.Println("\n" + strings.Repeat("=", 60))
 		fmt.Println("AI CODE REVIEW")
-		fmt.Println(strings.Repeat("=", 60) + "\n")
-		fmt.Println(content)
+		if severityFilter != "" {
+			fmt.Printf("(filtered: %s and above)\n", severityFilter)
+		}
+		fmt.Println(strings.Repeat("=", 60))
+
+		if structured != nil {
+			outputStructuredReview(structured)
+		} else {
+			fmt.Println()
+			fmt.Println(resp.Content)
+		}
+
 		fmt.Println(strings.Repeat("=", 60) + "\n")
 	}
 	return nil
+}
+
+// outputStructuredReview renders a structured review to the console.
+func outputStructuredReview(review *provider.StructuredReview) {
+	// Summary
+	if review.Summary != "" {
+		fmt.Println()
+		fmt.Println(review.Summary)
+	}
+
+	// Count by severity for stats
+	counts := review.CountBySeverity()
+	critical := counts[provider.SeverityCritical]
+	suggestions := counts[provider.SeveritySuggestion]
+	nits := counts[provider.SeverityNit]
+
+	if critical+suggestions+nits > 0 {
+		fmt.Printf("\nFindings: %d critical, %d suggestions, %d nits\n",
+			critical, suggestions, nits)
+	}
+
+	// Group comments by category
+	byCategory := review.CommentsByCategory()
+
+	// Output in standard category order
+	for _, cat := range provider.AllReviewCategories() {
+		comments := byCategory[cat]
+		if len(comments) == 0 {
+			continue
+		}
+
+		// Category header with counts
+		catCritical, catSuggestions, catNits := 0, 0, 0
+		for _, c := range comments {
+			switch c.Severity {
+			case provider.SeverityCritical:
+				catCritical++
+			case provider.SeveritySuggestion:
+				catSuggestions++
+			case provider.SeverityNit:
+				catNits++
+			}
+		}
+
+		fmt.Println()
+		fmt.Println(strings.Repeat("-", 60))
+		header := strings.ToUpper(provider.CategoryDisplayName(cat))
+		if cat == provider.CategoryPraise {
+			fmt.Printf("%s (%d items)\n", header, len(comments))
+		} else {
+			parts := []string{}
+			if catCritical > 0 {
+				parts = append(parts, fmt.Sprintf("%d critical", catCritical))
+			}
+			if catSuggestions > 0 {
+				parts = append(parts, fmt.Sprintf("%d suggestions", catSuggestions))
+			}
+			if catNits > 0 {
+				parts = append(parts, fmt.Sprintf("%d nits", catNits))
+			}
+			if len(parts) > 0 {
+				fmt.Printf("%s (%s)\n", header, strings.Join(parts, ", "))
+			} else {
+				fmt.Println(header)
+			}
+		}
+		fmt.Println(strings.Repeat("-", 60))
+
+		for _, c := range comments {
+			// Severity indicator
+			var indicator string
+			switch c.Severity {
+			case provider.SeverityCritical:
+				indicator = "[!]"
+			case provider.SeveritySuggestion:
+				indicator = "[*]"
+			case provider.SeverityNit:
+				indicator = "[-]"
+			}
+
+			// For praise, use checkmark
+			if cat == provider.CategoryPraise {
+				indicator = "[+]"
+			}
+
+			// Title with optional file/line reference
+			if c.File != "" {
+				if c.Line > 0 {
+					fmt.Printf("\n%s %s (%s:%d)\n", indicator, c.Title, c.File, c.Line)
+				} else {
+					fmt.Printf("\n%s %s (%s)\n", indicator, c.Title, c.File)
+				}
+			} else {
+				fmt.Printf("\n%s %s\n", indicator, c.Title)
+			}
+
+			// Description (indented)
+			if c.Description != "" {
+				lines := strings.Split(c.Description, "\n")
+				for _, line := range lines {
+					fmt.Printf("    %s\n", line)
+				}
+			}
+
+			// Suggestion (indented, with label)
+			if c.Suggestion != "" {
+				fmt.Println()
+				fmt.Println("    Suggestion:")
+				lines := strings.Split(c.Suggestion, "\n")
+				for _, line := range lines {
+					fmt.Printf("      %s\n", line)
+				}
+			}
+		}
+	}
+	fmt.Println()
 }

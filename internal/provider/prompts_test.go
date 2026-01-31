@@ -357,11 +357,17 @@ func TestBuildReviewPrompt(t *testing.T) {
 	if !strings.Contains(prompt, "+line1") {
 		t.Error("prompt should contain diff content")
 	}
-	if !strings.Contains(prompt, "Executive Summary") {
-		t.Error("prompt should mention Executive Summary")
+	if !strings.Contains(prompt, "category") {
+		t.Error("prompt should mention category")
 	}
-	if !strings.Contains(prompt, "Security Considerations") {
-		t.Error("prompt should mention Security Considerations")
+	if !strings.Contains(prompt, "severity") {
+		t.Error("prompt should mention severity")
+	}
+	if !strings.Contains(prompt, "design") {
+		t.Error("prompt should mention design category")
+	}
+	if !strings.Contains(prompt, "functionality") {
+		t.Error("prompt should mention functionality category")
 	}
 }
 
@@ -411,4 +417,189 @@ func TestBuildReviewPrompt_EdgeCases(t *testing.T) {
 			t.Error("prompt should not have Diff Content section when diff is empty")
 		}
 	})
+}
+
+func TestBuildReviewPrompt_WithCategories(t *testing.T) {
+	req := &ReviewRequest{
+		Files: []git.FileDiff{{Path: "main.go"}},
+		Options: ReviewOptions{
+			Categories: []ReviewCategory{CategoryDesign, CategoryTests},
+		},
+	}
+
+	prompt := BuildReviewPrompt(req)
+
+	if !strings.Contains(prompt, "FOCUS") {
+		t.Error("prompt should contain FOCUS instruction when categories are set")
+	}
+	if !strings.Contains(prompt, "design") {
+		t.Error("prompt should mention design category in focus")
+	}
+	if !strings.Contains(prompt, "tests") {
+		t.Error("prompt should mention tests category in focus")
+	}
+}
+
+func TestParseStructuredReview(t *testing.T) {
+	t.Run("valid JSON", func(t *testing.T) {
+		input := `{
+			"summary": "Test summary",
+			"comments": [
+				{"category": "design", "severity": "critical", "title": "Issue", "description": "Details"}
+			]
+		}`
+
+		resp := ParseStructuredReview(input)
+
+		if resp.Structured == nil {
+			t.Fatal("expected Structured to be set")
+		}
+		if resp.Structured.Summary != "Test summary" {
+			t.Errorf("Summary = %q, want 'Test summary'", resp.Structured.Summary)
+		}
+		if len(resp.Structured.Comments) != 1 {
+			t.Errorf("expected 1 comment, got %d", len(resp.Structured.Comments))
+		}
+		if resp.Content == "" {
+			t.Error("Content should be generated for backwards compat")
+		}
+	})
+
+	t.Run("invalid JSON fallback", func(t *testing.T) {
+		input := "This is not valid JSON, just plain text review"
+
+		resp := ParseStructuredReview(input)
+
+		if resp.Structured != nil {
+			t.Error("Structured should be nil for invalid JSON")
+		}
+		if resp.Content != input {
+			t.Errorf("Content = %q, want raw input", resp.Content)
+		}
+	})
+
+	t.Run("JSON in code block", func(t *testing.T) {
+		input := "```json\n{\"summary\": \"Test\", \"comments\": []}\n```"
+
+		resp := ParseStructuredReview(input)
+
+		if resp.Structured == nil {
+			t.Fatal("expected Structured to be set for code block JSON")
+		}
+		if resp.Structured.Summary != "Test" {
+			t.Errorf("Summary = %q, want 'Test'", resp.Structured.Summary)
+		}
+	})
+}
+
+func TestGenerateMarkdownFromReview(t *testing.T) {
+	t.Run("full review", func(t *testing.T) {
+		review := &StructuredReview{
+			Summary: "This is a test review.",
+			Comments: []ReviewComment{
+				{Category: CategoryDesign, Severity: SeverityCritical, Title: "Critical Issue", File: "main.go", Line: 42, Description: "Details here"},
+				{Category: CategoryDesign, Severity: SeverityNit, Title: "Minor Thing", Description: "Nit details"},
+				{Category: CategoryPraise, Severity: SeveritySuggestion, Title: "Good Job", Description: "Well done"},
+			},
+		}
+
+		md := GenerateMarkdownFromReview(review)
+
+		if !strings.Contains(md, "## Summary") {
+			t.Error("should contain Summary heading")
+		}
+		if !strings.Contains(md, "This is a test review.") {
+			t.Error("should contain summary text")
+		}
+		if !strings.Contains(md, "## Design") {
+			t.Error("should contain Design heading")
+		}
+		if !strings.Contains(md, "**[CRITICAL]**") {
+			t.Error("should contain critical indicator")
+		}
+		if !strings.Contains(md, "*[Nit]*") {
+			t.Error("should contain nit indicator")
+		}
+		if !strings.Contains(md, "main.go:42") {
+			t.Error("should contain file:line reference")
+		}
+		if !strings.Contains(md, "## Praise") {
+			t.Error("should contain Praise heading")
+		}
+	})
+
+	t.Run("with suggestion", func(t *testing.T) {
+		review := &StructuredReview{
+			Comments: []ReviewComment{
+				{Category: CategoryDesign, Severity: SeveritySuggestion, Title: "Refactor", Suggestion: "func better() {}"},
+			},
+		}
+
+		md := GenerateMarkdownFromReview(review)
+
+		if !strings.Contains(md, "**Suggestion:**") {
+			t.Error("should contain suggestion label")
+		}
+		if !strings.Contains(md, "func better()") {
+			t.Error("should contain suggestion code")
+		}
+	})
+
+	t.Run("file without line", func(t *testing.T) {
+		review := &StructuredReview{
+			Comments: []ReviewComment{
+				{Category: CategoryDesign, Severity: SeveritySuggestion, Title: "General", File: "main.go"},
+			},
+		}
+
+		md := GenerateMarkdownFromReview(review)
+
+		if !strings.Contains(md, "`main.go`") {
+			t.Error("should contain file reference without line")
+		}
+		if strings.Contains(md, "main.go:0") {
+			t.Error("should not contain :0 for missing line")
+		}
+	})
+
+	t.Run("empty summary", func(t *testing.T) {
+		review := &StructuredReview{
+			Comments: []ReviewComment{
+				{Category: CategoryDesign, Severity: SeveritySuggestion, Title: "Issue"},
+			},
+		}
+
+		md := GenerateMarkdownFromReview(review)
+
+		if strings.Contains(md, "## Summary") {
+			t.Error("should not contain Summary heading when empty")
+		}
+	})
+}
+
+func TestCategoryDisplayName(t *testing.T) {
+	tests := []struct {
+		cat  ReviewCategory
+		want string
+	}{
+		{CategoryDesign, "Design"},
+		{CategoryFunctionality, "Functionality"},
+		{CategoryComplexity, "Complexity"},
+		{CategoryTests, "Tests"},
+		{CategoryNaming, "Naming"},
+		{CategoryComments, "Comments"},
+		{CategoryStyle, "Style"},
+		{CategoryDocumentation, "Documentation"},
+		{CategoryPraise, "Praise"},
+		{ReviewCategory("unknown"), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.cat), func(t *testing.T) {
+			got := CategoryDisplayName(tt.cat)
+			if got != tt.want {
+				t.Errorf("CategoryDisplayName(%q) = %q, want %q", tt.cat, got, tt.want)
+			}
+		})
+	}
 }

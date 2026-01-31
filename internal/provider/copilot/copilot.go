@@ -164,7 +164,8 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 		return nil, err
 	}
 
-	return &provider.ReviewResponse{Content: text}, nil
+	// Parse structured review (falls back to raw content on parse error)
+	return provider.ParseStructuredReview(text), nil
 }
 
 // chat sends a message to the copilot-api proxy and returns the response text.

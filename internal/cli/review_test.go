@@ -384,8 +384,9 @@ func TestOutputAIReview_ToFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputPath := tmpDir + "/review.md"
 	content := "# Code Review\n\nThis is a test review."
+	resp := &provider.ReviewResponse{Content: content}
 
-	err := outputAIReview(content, outputPath)
+	err := outputAIReview(resp, outputPath, "")
 	if err != nil {
 		t.Fatalf("outputAIReview() failed: %v", err)
 	}
@@ -403,7 +404,8 @@ func TestOutputAIReview_ToFile(t *testing.T) {
 func TestOutputAIReview_ToConsole(t *testing.T) {
 	// Just verify it doesn't error - console output is hard to test
 	content := "# Code Review\n\nThis is a test review."
-	err := outputAIReview(content, "")
+	resp := &provider.ReviewResponse{Content: content}
+	err := outputAIReview(resp, "", "")
 	if err != nil {
 		t.Fatalf("outputAIReview() failed: %v", err)
 	}
@@ -413,7 +415,8 @@ func TestOutputAIReview_EmptyContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputPath := tmpDir + "/review.md"
 
-	err := outputAIReview("", outputPath)
+	resp := &provider.ReviewResponse{Content: ""}
+	err := outputAIReview(resp, outputPath, "")
 	if err == nil {
 		t.Fatal("expected error for empty content")
 	}
@@ -427,8 +430,9 @@ func TestOutputAIReview_CreatesParentDirectory(t *testing.T) {
 	// Create a nested path where the parent directory doesn't exist
 	outputPath := tmpDir + "/nested/subdir/review.md"
 	content := "# Code Review\n\nThis is a test review."
+	resp := &provider.ReviewResponse{Content: content}
 
-	err := outputAIReview(content, outputPath)
+	err := outputAIReview(resp, outputPath, "")
 	if err != nil {
 		t.Fatalf("outputAIReview() failed: %v", err)
 	}
@@ -440,5 +444,132 @@ func TestOutputAIReview_CreatesParentDirectory(t *testing.T) {
 	}
 	if string(written) != content {
 		t.Errorf("written content = %q, want %q", string(written), content)
+	}
+}
+
+func TestOutputAIReview_StructuredReview(t *testing.T) {
+	resp := &provider.ReviewResponse{
+		Structured: &provider.StructuredReview{
+			Summary: "This PR adds authentication support.",
+			Comments: []provider.ReviewComment{
+				{
+					Category:    provider.CategoryDesign,
+					Severity:    provider.SeverityCritical,
+					File:        "auth/handler.go",
+					Line:        42,
+					Title:       "Missing error handling",
+					Description: "The error from ValidateToken is ignored.",
+				},
+				{
+					Category:    provider.CategoryPraise,
+					Severity:    provider.SeveritySuggestion,
+					Title:       "Good test coverage",
+					Description: "Comprehensive test cases for edge conditions.",
+				},
+			},
+		},
+	}
+
+	// Test console output (just verify it doesn't error)
+	err := outputAIReview(resp, "", "")
+	if err != nil {
+		t.Fatalf("outputAIReview() failed for structured review: %v", err)
+	}
+
+	// Test file output
+	tmpDir := t.TempDir()
+	outputPath := tmpDir + "/review.md"
+	err = outputAIReview(resp, outputPath, "")
+	if err != nil {
+		t.Fatalf("outputAIReview() failed to write file: %v", err)
+	}
+
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+
+	// Verify key elements are in the generated markdown
+	content := string(written)
+	if !strings.Contains(content, "authentication support") {
+		t.Error("output should contain summary")
+	}
+	if !strings.Contains(content, "Missing error handling") {
+		t.Error("output should contain comment title")
+	}
+	if !strings.Contains(content, "auth/handler.go") {
+		t.Error("output should contain file reference")
+	}
+}
+
+func TestOutputAIReview_SeverityFilter(t *testing.T) {
+	resp := &provider.ReviewResponse{
+		Structured: &provider.StructuredReview{
+			Summary: "Test review with multiple severities.",
+			Comments: []provider.ReviewComment{
+				{
+					Category: provider.CategoryDesign,
+					Severity: provider.SeverityCritical,
+					Title:    "Critical issue",
+				},
+				{
+					Category: provider.CategoryFunctionality,
+					Severity: provider.SeveritySuggestion,
+					Title:    "Suggestion issue",
+				},
+				{
+					Category: provider.CategoryStyle,
+					Severity: provider.SeverityNit,
+					Title:    "Nit issue",
+				},
+			},
+		},
+	}
+
+	// Test with critical filter - should only show critical
+	tmpDir := t.TempDir()
+	outputPath := tmpDir + "/critical.md"
+	err := outputAIReview(resp, outputPath, provider.SeverityCritical)
+	if err != nil {
+		t.Fatalf("outputAIReview() failed: %v", err)
+	}
+
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+	content := string(written)
+
+	if !strings.Contains(content, "Critical issue") {
+		t.Error("output should contain critical issue")
+	}
+	if strings.Contains(content, "Suggestion issue") {
+		t.Error("output should NOT contain suggestion issue when filtering for critical")
+	}
+	if strings.Contains(content, "Nit issue") {
+		t.Error("output should NOT contain nit issue when filtering for critical")
+	}
+
+	// Test with suggestion filter - should show critical and suggestion
+	outputPath = tmpDir + "/suggestion.md"
+	err = outputAIReview(resp, outputPath, provider.SeveritySuggestion)
+	if err != nil {
+		t.Fatalf("outputAIReview() failed: %v", err)
+	}
+
+	written, err = os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+	content = string(written)
+
+	if !strings.Contains(content, "Critical issue") {
+		t.Error("output should contain critical issue")
+	}
+	if !strings.Contains(content, "Suggestion issue") {
+		t.Error("output should contain suggestion issue")
+	}
+	if strings.Contains(content, "Nit issue") {
+		t.Error("output should NOT contain nit issue when filtering for suggestion")
 	}
 }

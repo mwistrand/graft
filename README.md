@@ -177,18 +177,26 @@ graft review main --ai-review
 # Write AI review to a file
 graft review main --ai-review --ai-review-output review.md
 
+# Focus review on specific categories
+graft review main --ai-review --review-categories design,functionality,tests
+
+# Filter review output by severity
+graft review main --ai-review --review-severity critical
+
 # Set prompt timeout (in minutes, 0 to disable)
 graft review main --prompt-timeout 60
 ```
 
 ### AI Code Review
 
-The `--ai-review` flag generates a detailed code review using the configured AI provider. The review includes:
-- Executive summary of the changes
-- Code quality analysis
-- Security considerations
-- Performance implications
-- Specific improvement suggestions
+The `--ai-review` flag generates a detailed code review using the configured AI provider. The review is structured into categories and severity levels:
+
+**Categories:** design, functionality, complexity, tests, naming, comments, style, documentation, praise
+
+**Severity Levels:**
+- `critical`: Must-fix issues (bugs, security, design flaws)
+- `suggestion`: Should-consider improvements
+- `nit`: Minor/optional issues (style preferences)
 
 ```bash
 # Display review in console
@@ -196,6 +204,12 @@ graft review main --ai-review
 
 # Save review to a file
 graft review main --ai-review --ai-review-output review.md
+
+# Focus on specific categories
+graft review main --ai-review --review-categories design,functionality
+
+# Show only critical issues
+graft review main --ai-review --review-severity critical
 ```
 
 **Custom Review Prompt:** Place a custom system prompt at `.graft/code-reviewer.md` in your repository to override the default review approach.

@@ -219,6 +219,120 @@ func ParseJSONResponse(text string, v any) error {
 	return nil
 }
 
+// ParseStructuredReview parses a JSON response into a StructuredReview.
+// It also generates a markdown Content field for backwards compatibility.
+// If parsing fails, it returns a ReviewResponse with just the raw content.
+func ParseStructuredReview(text string) *ReviewResponse {
+	var structured StructuredReview
+	if err := ParseJSONResponse(text, &structured); err != nil {
+		// Fall back to raw content if JSON parsing fails
+		return &ReviewResponse{Content: text}
+	}
+
+	// Generate markdown from structured review for backwards compatibility
+	content := GenerateMarkdownFromReview(&structured)
+
+	return &ReviewResponse{
+		Content:    content,
+		Structured: &structured,
+	}
+}
+
+// GenerateMarkdownFromReview converts a StructuredReview to markdown format.
+func GenerateMarkdownFromReview(review *StructuredReview) string {
+	var b strings.Builder
+
+	// Summary
+	if review.Summary != "" {
+		b.WriteString("## Summary\n\n")
+		b.WriteString(review.Summary)
+		b.WriteString("\n\n")
+	}
+
+	// Group comments by category
+	byCategory := review.CommentsByCategory()
+
+	// Output in standard category order
+	for _, cat := range AllReviewCategories() {
+		comments := byCategory[cat]
+		if len(comments) == 0 {
+			continue
+		}
+
+		// Category header
+		b.WriteString(fmt.Sprintf("## %s\n\n", CategoryDisplayName(cat)))
+
+		for _, c := range comments {
+			// Severity indicator
+			switch c.Severity {
+			case SeverityCritical:
+				b.WriteString("**[CRITICAL]** ")
+			case SeverityNit:
+				b.WriteString("*[Nit]* ")
+			}
+
+			// Title with optional file/line reference
+			if c.File != "" {
+				if c.Line > 0 {
+					b.WriteString(fmt.Sprintf("**%s** (`%s:%d`)\n\n", c.Title, c.File, c.Line))
+				} else {
+					b.WriteString(fmt.Sprintf("**%s** (`%s`)\n\n", c.Title, c.File))
+				}
+			} else {
+				b.WriteString(fmt.Sprintf("**%s**\n\n", c.Title))
+			}
+
+			// Description
+			if c.Description != "" {
+				b.WriteString(c.Description)
+				b.WriteString("\n\n")
+			}
+
+			// Suggestion
+			if c.Suggestion != "" {
+				b.WriteString("**Suggestion:**\n")
+				// Check if suggestion looks like code
+				if strings.Contains(c.Suggestion, "\n") || strings.Contains(c.Suggestion, "func ") || strings.Contains(c.Suggestion, "if ") {
+					b.WriteString("```\n")
+					b.WriteString(c.Suggestion)
+					b.WriteString("\n```\n\n")
+				} else {
+					b.WriteString(c.Suggestion)
+					b.WriteString("\n\n")
+				}
+			}
+		}
+	}
+
+	return strings.TrimSpace(b.String())
+}
+
+// CategoryDisplayName returns a human-readable name for a review category.
+func CategoryDisplayName(cat ReviewCategory) string {
+	switch cat {
+	case CategoryDesign:
+		return "Design"
+	case CategoryFunctionality:
+		return "Functionality"
+	case CategoryComplexity:
+		return "Complexity"
+	case CategoryTests:
+		return "Tests"
+	case CategoryNaming:
+		return "Naming"
+	case CategoryComments:
+		return "Comments"
+	case CategoryStyle:
+		return "Style"
+	case CategoryDocumentation:
+		return "Documentation"
+	case CategoryPraise:
+		return "Praise"
+	default:
+		return string(cat)
+	}
+}
+
 // ExtractJSON extracts JSON content from a string that may contain markdown.
 func ExtractJSON(text string) string {
 	// Look for JSON code block
@@ -302,15 +416,52 @@ func BuildReviewPrompt(req *ReviewRequest) string {
 
 	b.WriteString(`---
 
-Please provide your review in markdown format. Include:
-1. **Executive Summary**: Brief overview of the changes and their impact
-2. **Code Quality**: Analysis of code structure, readability, and maintainability
-3. **Security Considerations**: Any security concerns or best practices
-4. **Performance**: Potential performance implications
-5. **Suggestions**: Specific, actionable recommendations for improvement
-6. **Questions**: Any clarifying questions for the author
+Respond with a JSON object in this exact format:
+{
+  "summary": "2-3 sentence executive summary of the changes and overall assessment",
+  "comments": [
+    {
+      "category": "design|functionality|complexity|tests|naming|comments|style|documentation|praise",
+      "severity": "critical|suggestion|nit",
+      "file": "path/to/file.go",
+      "line": 42,
+      "title": "Short issue title (1 line)",
+      "description": "Detailed explanation of the issue and why it matters",
+      "suggestion": "Optional: suggested fix or code example"
+    }
+  ]
+}
 
-Focus on being constructive and educational. Prioritize significant issues over minor stylistic preferences.`)
+## Category Definitions
+- **design**: Architecture fit, system integration, approach soundness
+- **functionality**: Correctness, edge cases, error handling, concurrency
+- **complexity**: Understandability, over-engineering, simplification opportunities
+- **tests**: Test presence, validity, coverage, quality
+- **naming**: Clarity and appropriateness of names
+- **comments**: Comment necessity, accuracy, explaining "why" not "what"
+- **style**: Codebase conventions, idioms, formatting
+- **documentation**: Doc updates for user-facing changes
+- **praise**: Good patterns, improvements, things done well
+
+`)
+
+	// Add focus instruction if specific categories are requested
+	if len(req.Options.Categories) > 0 {
+		catNames := make([]string, len(req.Options.Categories))
+		for i, c := range req.Options.Categories {
+			catNames[i] = string(c)
+		}
+		b.WriteString(fmt.Sprintf("**FOCUS**: Only provide feedback for these categories: %s. Skip other categories entirely.\n\n", strings.Join(catNames, ", ")))
+	}
+
+	b.WriteString(`## Guidelines
+- Include file and line when referencing specific code
+- Use "praise" category to acknowledge good work
+- Omit file/line for general observations
+- Prioritize critical issues over nits
+- Be specific and actionable
+
+Return ONLY valid JSON, no additional text.`)
 
 	return b.String()
 }
