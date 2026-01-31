@@ -20,6 +20,9 @@ func (p *testProvider) OrderFiles(ctx context.Context, req *OrderRequest) (*Orde
 func (p *testProvider) ReviewChanges(ctx context.Context, req *ReviewRequest) (*ReviewResponse, error) {
 	return &ReviewResponse{Content: "test"}, nil
 }
+func (p *testProvider) QuickReview(ctx context.Context, req *QuickReviewRequest) (*QuickReviewResponse, error) {
+	return &QuickReviewResponse{Verdict: VerdictApprove, Summary: "test", Proceed: true}, nil
+}
 
 func TestRegistryRegisterAndGet(t *testing.T) {
 	r := NewRegistry("default")

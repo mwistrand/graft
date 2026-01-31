@@ -87,14 +87,82 @@ func TestProvider_Reset(t *testing.T) {
 	p.ReviewChanges(context.Background(), &provider.ReviewRequest{
 		Files: []git.FileDiff{{Path: "test.go"}},
 	})
+	p.QuickReview(context.Background(), &provider.QuickReviewRequest{
+		Files: []git.FileDiff{{Path: "test.go"}},
+	})
 
-	if len(p.SummarizeCalls) != 1 || len(p.OrderCalls) != 1 || len(p.ReviewCalls) != 1 {
+	if len(p.SummarizeCalls) != 1 || len(p.OrderCalls) != 1 || len(p.ReviewCalls) != 1 || len(p.QuickReviewCalls) != 1 {
 		t.Error("expected calls to be tracked")
 	}
 
 	p.Reset()
 
-	if len(p.SummarizeCalls) != 0 || len(p.OrderCalls) != 0 || len(p.ReviewCalls) != 0 {
+	if len(p.SummarizeCalls) != 0 || len(p.OrderCalls) != 0 || len(p.ReviewCalls) != 0 || len(p.QuickReviewCalls) != 0 {
 		t.Error("Reset() should clear all call records")
+	}
+}
+
+func TestProvider_QuickReview_Default(t *testing.T) {
+	p := New()
+
+	result, err := p.QuickReview(context.Background(), &provider.QuickReviewRequest{
+		Files: []git.FileDiff{{Path: "main.go", Status: git.StatusModified}},
+	})
+
+	if err != nil {
+		t.Fatalf("QuickReview() failed: %v", err)
+	}
+
+	if result.Verdict != provider.VerdictApprove {
+		t.Errorf("Verdict = %q, want %q", result.Verdict, provider.VerdictApprove)
+	}
+	if !result.Proceed {
+		t.Error("Proceed should be true")
+	}
+	if len(p.QuickReviewCalls) != 1 {
+		t.Errorf("expected 1 quick review call, got %d", len(p.QuickReviewCalls))
+	}
+}
+
+func TestProvider_QuickReview_CustomFunc(t *testing.T) {
+	p := New()
+	p.QuickReviewFunc = func(ctx context.Context, req *provider.QuickReviewRequest) (*provider.QuickReviewResponse, error) {
+		return &provider.QuickReviewResponse{
+			Verdict:  provider.VerdictBlocker,
+			Summary:  "Custom blocker for " + req.Files[0].Path,
+			Concerns: []string{"Test concern"},
+			Proceed:  false,
+		}, nil
+	}
+
+	result, err := p.QuickReview(context.Background(), &provider.QuickReviewRequest{
+		Files: []git.FileDiff{{Path: "custom.go"}},
+	})
+
+	if err != nil {
+		t.Fatalf("QuickReview() failed: %v", err)
+	}
+
+	if result.Verdict != provider.VerdictBlocker {
+		t.Errorf("Verdict = %q, want %q", result.Verdict, provider.VerdictBlocker)
+	}
+	if result.Summary != "Custom blocker for custom.go" {
+		t.Errorf("Summary = %q, want 'Custom blocker for custom.go'", result.Summary)
+	}
+}
+
+func TestProvider_QuickReview_Error(t *testing.T) {
+	p := New()
+	expectedErr := errors.New("quick review error")
+	p.QuickReviewFunc = func(ctx context.Context, req *provider.QuickReviewRequest) (*provider.QuickReviewResponse, error) {
+		return nil, expectedErr
+	}
+
+	_, err := p.QuickReview(context.Background(), &provider.QuickReviewRequest{
+		Files: []git.FileDiff{{Path: "test.go"}},
+	})
+
+	if err != expectedErr {
+		t.Errorf("err = %v, want %v", err, expectedErr)
 	}
 }

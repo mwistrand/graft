@@ -52,6 +52,7 @@ type Provider interface {
     SummarizeChanges(ctx, req) (*SummarizeResponse, error)
     OrderFiles(ctx, req) (*OrderResponse, error)
     ReviewChanges(ctx, req) (*ReviewResponse, error)
+    QuickReview(ctx, req) (*QuickReviewResponse, error)
 }
 ```
 

@@ -24,6 +24,10 @@ type Provider interface {
 
 	// ReviewChanges performs a detailed code review of the changes.
 	ReviewChanges(ctx context.Context, req *ReviewRequest) (*ReviewResponse, error)
+
+	// QuickReview performs a fast initial assessment of changes.
+	// Returns a verdict indicating whether to proceed with full review.
+	QuickReview(ctx context.Context, req *QuickReviewRequest) (*QuickReviewResponse, error)
 }
 
 // SummarizeRequest contains the diff context for summarization.
@@ -462,3 +466,41 @@ func DefaultReviewOptions() ReviewOptions {
 		MaxTokens: 8192,
 	}
 }
+
+// QuickReviewRequest contains the context for a fast initial assessment.
+type QuickReviewRequest struct {
+	// Files contains the changed files with their metadata.
+	Files []git.FileDiff
+
+	// Commits contains the commits being reviewed.
+	Commits []git.Commit
+}
+
+// QuickReviewVerdict indicates the overall assessment result.
+type QuickReviewVerdict string
+
+const (
+	// VerdictApprove indicates no issues found, safe to approve.
+	VerdictApprove QuickReviewVerdict = "approve"
+	// VerdictConcerns indicates potential issues that need review.
+	VerdictConcerns QuickReviewVerdict = "concerns"
+	// VerdictBlocker indicates critical issues that must be addressed.
+	VerdictBlocker QuickReviewVerdict = "blocker"
+)
+
+// QuickReviewResponse contains the fast initial assessment result.
+type QuickReviewResponse struct {
+	// Verdict is the overall assessment: "approve", "concerns", or "blocker".
+	Verdict QuickReviewVerdict `json:"verdict"`
+
+	// Summary is a 1-2 sentence assessment of the changes.
+	Summary string `json:"summary"`
+
+	// Concerns lists potential issues found (empty if verdict is "approve").
+	Concerns []string `json:"concerns,omitempty"`
+
+	// Proceed indicates whether it's safe to proceed with full review.
+	// True for "approve" and "concerns", false for "blocker".
+	Proceed bool `json:"proceed"`
+}
+

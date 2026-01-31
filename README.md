@@ -188,6 +188,9 @@ graft review main --prompt-timeout 60
 
 # Only review core and supporting groups, skip minor changes
 graft review main --major-only
+
+# Perform a quick initial assessment before full review
+graft review main --quick
 ```
 
 ### AI Code Review

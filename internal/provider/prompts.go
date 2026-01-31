@@ -491,3 +491,112 @@ Return ONLY valid JSON, no additional text.`)
 
 	return b.String()
 }
+
+// BuildQuickReviewPrompt constructs the prompt for a fast initial assessment.
+func BuildQuickReviewPrompt(req *QuickReviewRequest) string {
+	var b strings.Builder
+
+	b.WriteString(`You are an expert code reviewer performing a QUICK initial assessment of a pull request.
+Your goal is to provide a fast verdict on whether this change is ready for detailed review.
+
+IMPORTANT: This is NOT a detailed review. Focus ONLY on:
+1. Critical issues that would block approval (security vulnerabilities, obvious bugs, breaking changes)
+2. Major concerns that need attention (missing tests, risky patterns)
+3. Overall assessment of change quality
+
+`)
+
+	// Add commits section (brief)
+	if len(req.Commits) > 0 {
+		b.WriteString("## Commits\n")
+		for _, c := range req.Commits {
+			b.WriteString(fmt.Sprintf("- %s: %s\n", c.ShortHash, c.Subject))
+		}
+		b.WriteString("\n")
+	}
+
+	// Add changed files section
+	b.WriteString("## Changed Files\n")
+	totalAdditions := 0
+	totalDeletions := 0
+	for _, f := range req.Files {
+		status := f.Status
+		if f.OldPath != "" {
+			status = fmt.Sprintf("%s from %s", status, f.OldPath)
+		}
+		b.WriteString(fmt.Sprintf("- %s (%s: +%d/-%d)\n", f.Path, status, f.Additions, f.Deletions))
+		totalAdditions += f.Additions
+		totalDeletions += f.Deletions
+	}
+	b.WriteString(fmt.Sprintf("\nTotal: %d files, +%d/-%d lines\n\n", len(req.Files), totalAdditions, totalDeletions))
+
+	b.WriteString(`---
+
+Respond with a JSON object in this exact format:
+{
+  "verdict": "approve|concerns|blocker",
+  "summary": "1-2 sentence assessment of the overall change quality",
+  "concerns": ["List of specific concerns or issues (empty for 'approve')"],
+  "proceed": true
+}
+
+## Verdict Guidelines
+
+- **approve**: Changes look good, no significant issues
+  - Clean implementation
+  - Appropriate tests included
+  - No security or correctness concerns
+  - proceed: true
+
+- **concerns**: Potential issues that need closer review
+  - Large or complex changes that need careful review
+  - Missing or inadequate tests
+  - Patterns that might cause problems
+  - proceed: true (but flag for attention)
+
+- **blocker**: Critical issues that should be addressed before full review
+  - Security vulnerabilities (SQL injection, XSS, auth bypass)
+  - Obvious bugs or logic errors
+  - Breaking API changes without migration
+  - proceed: false
+
+## Quick Check List
+
+Scan for these red flags:
+1. Hardcoded credentials or secrets
+2. SQL/command injection risks
+3. Missing error handling on critical paths
+4. Removed or disabled tests
+5. Changes to security-sensitive code without review
+6. Large auto-generated or vendored files
+
+If NO red flags: verdict = "approve"
+If SOME concerns: verdict = "concerns", list them
+If CRITICAL issues: verdict = "blocker", list them
+
+Be concise. Return ONLY valid JSON.`)
+
+	return b.String()
+}
+
+// ParseQuickReviewResponse parses a JSON response into a QuickReviewResponse.
+func ParseQuickReviewResponse(text string) (*QuickReviewResponse, error) {
+	var resp QuickReviewResponse
+	if err := ParseJSONResponse(text, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse quick review response: %w", err)
+	}
+
+	// Normalize the verdict
+	switch QuickReviewVerdict(strings.ToLower(string(resp.Verdict))) {
+	case VerdictApprove, VerdictConcerns, VerdictBlocker:
+		resp.Verdict = QuickReviewVerdict(strings.ToLower(string(resp.Verdict)))
+	default:
+		// Default to concerns if verdict is unclear
+		resp.Verdict = VerdictConcerns
+	}
+
+	// Set proceed based on verdict if not explicitly set
+	resp.Proceed = resp.Verdict != VerdictBlocker
+
+	return &resp, nil
+}

@@ -168,6 +168,18 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 	return provider.ParseStructuredReview(text), nil
 }
 
+// QuickReview performs a fast initial assessment of changes.
+func (p *Provider) QuickReview(ctx context.Context, req *provider.QuickReviewRequest) (*provider.QuickReviewResponse, error) {
+	prompt := provider.BuildQuickReviewPrompt(req)
+
+	text, err := p.chat(ctx, prompt, "", 1024)
+	if err != nil {
+		return nil, err
+	}
+
+	return provider.ParseQuickReviewResponse(text)
+}
+
 // chat sends a message to the copilot-api proxy and returns the response text.
 // If systemPrompt is non-empty, it's included as a system message.
 func (p *Provider) chat(ctx context.Context, prompt string, systemPrompt string, maxTokens int) (string, error) {

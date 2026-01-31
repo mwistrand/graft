@@ -38,6 +38,7 @@ var (
 	reviewCategories string
 	reviewSeverity   string
 	majorOnly        bool
+	quickReview      bool
 )
 
 var reviewCmd = &cobra.Command{
@@ -73,6 +74,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewCategories, "review-categories", "", "Focus AI review on specific categories (comma-separated: design,functionality,complexity,tests,naming,comments,style,documentation)")
 	reviewCmd.Flags().StringVar(&reviewSeverity, "review-severity", "", "Filter review output by minimum severity (critical, suggestion, nit)")
 	reviewCmd.Flags().BoolVar(&majorOnly, "major-only", false, "Only review core and supporting groups, skip minor changes")
+	reviewCmd.Flags().BoolVar(&quickReview, "quick", false, "Perform a quick initial assessment before full review")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -158,7 +160,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 	// Initialize AI provider if needed
 	var aiProvider provider.Provider
 	var cleanup func()
-	if !skipSummary || !skipOrdering {
+	if !skipSummary || !skipOrdering || quickReview {
 		Verbose("Initializing AI provider...")
 		aiProvider, cleanup, err = initProvider(ctx, cfg)
 		if err != nil {
@@ -167,9 +169,35 @@ func runReview(cmd *cobra.Command, args []string) error {
 			fmt.Println()
 			skipSummary = true
 			skipOrdering = true
+			quickReview = false
 		}
 		if cleanup != nil {
 			defer cleanup()
+		}
+	}
+
+	// Quick review: fast initial assessment before detailed review
+	if quickReview && aiProvider != nil {
+		Verbose("Performing quick initial assessment...")
+		fmt.Println("Performing quick assessment...")
+
+		quickResp, err := aiProvider.QuickReview(ctx, &provider.QuickReviewRequest{
+			Files:   diffResult.Files,
+			Commits: diffResult.Commits,
+		})
+		if err != nil {
+			fmt.Printf("Warning: Quick review failed: %v\n\n", err)
+		} else {
+			if err := outputQuickReview(quickResp); err != nil {
+				return fmt.Errorf("outputting quick review: %w", err)
+			}
+
+			// If blocker, stop here
+			if quickResp.Verdict == provider.VerdictBlocker {
+				fmt.Println("\nQuick review identified critical blockers.")
+				fmt.Println("Address these issues before proceeding with full review.")
+				return nil
+			}
 		}
 	}
 
@@ -925,4 +953,63 @@ func outputStructuredReview(review *provider.StructuredReview) {
 		}
 	}
 	fmt.Println()
+}
+
+// outputQuickReview renders the quick review verdict to the console.
+func outputQuickReview(resp *provider.QuickReviewResponse) error {
+	if resp == nil {
+		return fmt.Errorf("quick review response is empty")
+	}
+
+	fmt.Println()
+	fmt.Println(strings.Repeat("=", 60))
+	fmt.Println("QUICK ASSESSMENT")
+	fmt.Println(strings.Repeat("=", 60))
+
+	// Verdict with visual indicator
+	var verdictIcon, verdictLabel string
+	switch resp.Verdict {
+	case provider.VerdictApprove:
+		verdictIcon = "[OK]"
+		verdictLabel = "APPROVE"
+	case provider.VerdictConcerns:
+		verdictIcon = "[?]"
+		verdictLabel = "CONCERNS"
+	case provider.VerdictBlocker:
+		verdictIcon = "[!]"
+		verdictLabel = "BLOCKER"
+	default:
+		verdictIcon = "[?]"
+		verdictLabel = string(resp.Verdict)
+	}
+
+	fmt.Printf("\nVerdict: %s %s\n", verdictIcon, verdictLabel)
+	fmt.Println()
+
+	// Summary
+	if resp.Summary != "" {
+		fmt.Println(resp.Summary)
+		fmt.Println()
+	}
+
+	// Concerns
+	if len(resp.Concerns) > 0 {
+		fmt.Println("Concerns:")
+		for _, c := range resp.Concerns {
+			fmt.Printf("  - %s\n", c)
+		}
+		fmt.Println()
+	}
+
+	// Proceed indicator
+	if resp.Proceed {
+		fmt.Println("Proceeding with full review...")
+	} else {
+		fmt.Println("Review blocked. Address concerns before continuing.")
+	}
+
+	fmt.Println(strings.Repeat("=", 60))
+	fmt.Println()
+
+	return nil
 }

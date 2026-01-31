@@ -638,3 +638,150 @@ func TestCategoryDisplayName(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildQuickReviewPrompt(t *testing.T) {
+	req := &QuickReviewRequest{
+		Files: []git.FileDiff{
+			{Path: "main.go", Status: git.StatusModified, Additions: 10, Deletions: 5},
+			{Path: "helper.go", Status: git.StatusAdded, Additions: 20, Deletions: 0},
+		},
+		Commits: []git.Commit{
+			{ShortHash: "abc123", Subject: "Add feature"},
+		},
+	}
+
+	prompt := BuildQuickReviewPrompt(req)
+
+	if !strings.Contains(prompt, "main.go") {
+		t.Error("prompt should contain main.go")
+	}
+	if !strings.Contains(prompt, "helper.go") {
+		t.Error("prompt should contain helper.go")
+	}
+	if !strings.Contains(prompt, "abc123") {
+		t.Error("prompt should contain commit hash")
+	}
+	if !strings.Contains(prompt, "Add feature") {
+		t.Error("prompt should contain commit message")
+	}
+	if !strings.Contains(prompt, "verdict") {
+		t.Error("prompt should mention verdict")
+	}
+	if !strings.Contains(prompt, "approve") {
+		t.Error("prompt should mention approve verdict")
+	}
+	if !strings.Contains(prompt, "blocker") {
+		t.Error("prompt should mention blocker verdict")
+	}
+}
+
+func TestBuildQuickReviewPrompt_EdgeCases(t *testing.T) {
+	t.Run("empty commits", func(t *testing.T) {
+		req := &QuickReviewRequest{
+			Files: []git.FileDiff{{Path: "main.go"}},
+		}
+		prompt := BuildQuickReviewPrompt(req)
+		if strings.Contains(prompt, "## Commits") {
+			t.Error("prompt should not have Commits section when commits are empty")
+		}
+	})
+
+	t.Run("renamed file", func(t *testing.T) {
+		req := &QuickReviewRequest{
+			Files: []git.FileDiff{{Path: "new.go", OldPath: "old.go", Status: git.StatusRenamed}},
+		}
+		prompt := BuildQuickReviewPrompt(req)
+		if !strings.Contains(prompt, "old.go") {
+			t.Error("prompt should include old path for renamed files")
+		}
+	})
+
+	t.Run("totals calculated", func(t *testing.T) {
+		req := &QuickReviewRequest{
+			Files: []git.FileDiff{
+				{Path: "a.go", Additions: 10, Deletions: 5},
+				{Path: "b.go", Additions: 20, Deletions: 3},
+			},
+		}
+		prompt := BuildQuickReviewPrompt(req)
+		if !strings.Contains(prompt, "+30/-8") {
+			t.Error("prompt should contain total additions/deletions")
+		}
+	})
+}
+
+func TestParseQuickReviewResponse(t *testing.T) {
+	t.Run("valid approve", func(t *testing.T) {
+		input := `{"verdict": "approve", "summary": "Looks good", "concerns": [], "proceed": true}`
+		resp, err := ParseQuickReviewResponse(input)
+		if err != nil {
+			t.Fatalf("ParseQuickReviewResponse() failed: %v", err)
+		}
+		if resp.Verdict != VerdictApprove {
+			t.Errorf("Verdict = %q, want %q", resp.Verdict, VerdictApprove)
+		}
+		if resp.Summary != "Looks good" {
+			t.Errorf("Summary = %q, want 'Looks good'", resp.Summary)
+		}
+		if !resp.Proceed {
+			t.Error("Proceed should be true for approve")
+		}
+	})
+
+	t.Run("valid blocker", func(t *testing.T) {
+		input := `{"verdict": "blocker", "summary": "Security issue", "concerns": ["SQL injection"], "proceed": false}`
+		resp, err := ParseQuickReviewResponse(input)
+		if err != nil {
+			t.Fatalf("ParseQuickReviewResponse() failed: %v", err)
+		}
+		if resp.Verdict != VerdictBlocker {
+			t.Errorf("Verdict = %q, want %q", resp.Verdict, VerdictBlocker)
+		}
+		if resp.Proceed {
+			t.Error("Proceed should be false for blocker")
+		}
+		if len(resp.Concerns) != 1 || resp.Concerns[0] != "SQL injection" {
+			t.Errorf("Concerns = %v, want [SQL injection]", resp.Concerns)
+		}
+	})
+
+	t.Run("verdict normalization", func(t *testing.T) {
+		input := `{"verdict": "APPROVE", "summary": "Test"}`
+		resp, err := ParseQuickReviewResponse(input)
+		if err != nil {
+			t.Fatalf("ParseQuickReviewResponse() failed: %v", err)
+		}
+		if resp.Verdict != VerdictApprove {
+			t.Errorf("Verdict = %q, want %q (should normalize case)", resp.Verdict, VerdictApprove)
+		}
+	})
+
+	t.Run("unknown verdict defaults to concerns", func(t *testing.T) {
+		input := `{"verdict": "unknown", "summary": "Test"}`
+		resp, err := ParseQuickReviewResponse(input)
+		if err != nil {
+			t.Fatalf("ParseQuickReviewResponse() failed: %v", err)
+		}
+		if resp.Verdict != VerdictConcerns {
+			t.Errorf("Verdict = %q, want %q (should default to concerns)", resp.Verdict, VerdictConcerns)
+		}
+	})
+
+	t.Run("invalid JSON", func(t *testing.T) {
+		_, err := ParseQuickReviewResponse("not valid json")
+		if err == nil {
+			t.Error("expected error for invalid JSON")
+		}
+	})
+
+	t.Run("JSON in code block", func(t *testing.T) {
+		input := "```json\n{\"verdict\": \"concerns\", \"summary\": \"Needs review\"}\n```"
+		resp, err := ParseQuickReviewResponse(input)
+		if err != nil {
+			t.Fatalf("ParseQuickReviewResponse() failed: %v", err)
+		}
+		if resp.Verdict != VerdictConcerns {
+			t.Errorf("Verdict = %q, want %q", resp.Verdict, VerdictConcerns)
+		}
+	})
+}

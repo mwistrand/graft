@@ -146,6 +146,29 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 	return provider.ParseStructuredReview(text), nil
 }
 
+// QuickReview performs a fast initial assessment of changes.
+func (p *Provider) QuickReview(ctx context.Context, req *provider.QuickReviewRequest) (*provider.QuickReviewResponse, error) {
+	prompt := provider.BuildQuickReviewPrompt(req)
+
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     p.model,
+		MaxTokens: int64(1024),
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("claude API error: %w", err)
+	}
+
+	text := extractTextContent(resp)
+	if text == "" {
+		return nil, errors.New("empty response from Claude")
+	}
+
+	return provider.ParseQuickReviewResponse(text)
+}
+
 // extractTextContent extracts the text content from a Claude response.
 func extractTextContent(resp *anthropic.Message) string {
 	for _, block := range resp.Content {

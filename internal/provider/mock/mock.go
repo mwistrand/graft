@@ -22,6 +22,9 @@ type Provider struct {
 	// ReviewFunc allows customizing the ReviewChanges behavior.
 	ReviewFunc func(ctx context.Context, req *provider.ReviewRequest) (*provider.ReviewResponse, error)
 
+	// QuickReviewFunc allows customizing the QuickReview behavior.
+	QuickReviewFunc func(ctx context.Context, req *provider.QuickReviewRequest) (*provider.QuickReviewResponse, error)
+
 	// SummarizeCalls tracks calls to SummarizeChanges.
 	SummarizeCalls []*provider.SummarizeRequest
 
@@ -30,6 +33,9 @@ type Provider struct {
 
 	// ReviewCalls tracks calls to ReviewChanges.
 	ReviewCalls []*provider.ReviewRequest
+
+	// QuickReviewCalls tracks calls to QuickReview.
+	QuickReviewCalls []*provider.QuickReviewRequest
 }
 
 // New creates a new mock provider with default behavior.
@@ -117,11 +123,29 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 	}, nil
 }
 
+// QuickReview returns a mock quick review or calls the custom function.
+func (p *Provider) QuickReview(ctx context.Context, req *provider.QuickReviewRequest) (*provider.QuickReviewResponse, error) {
+	p.QuickReviewCalls = append(p.QuickReviewCalls, req)
+
+	if p.QuickReviewFunc != nil {
+		return p.QuickReviewFunc(ctx, req)
+	}
+
+	// Default mock response: approve with no concerns
+	return &provider.QuickReviewResponse{
+		Verdict:  provider.VerdictApprove,
+		Summary:  "Mock quick review: changes look good",
+		Concerns: nil,
+		Proceed:  true,
+	}, nil
+}
+
 // Reset clears recorded calls.
 func (p *Provider) Reset() {
 	p.SummarizeCalls = nil
 	p.OrderCalls = nil
 	p.ReviewCalls = nil
+	p.QuickReviewCalls = nil
 }
 
 // extractPaths returns the paths from a slice of FileDiffs.
