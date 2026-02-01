@@ -196,3 +196,42 @@ func (r *Repository) ResolvePath(path string) string {
 	}
 	return filepath.Join(r.dir, path)
 }
+
+// HasRef checks if a ref or object ID exists locally.
+// This works for both ref names (e.g., "main", "origin/main") and commit SHAs.
+// For commit SHAs, the object must be reachable in the local repository.
+func (r *Repository) HasRef(ctx context.Context, ref string) bool {
+	_, err := r.run(ctx, "rev-parse", "--verify", ref)
+	return err == nil
+}
+
+// FetchRef fetches a specific ref from a remote.
+// Note: This fetches to FETCH_HEAD only. Use FetchRefTo for explicit local ref mapping.
+func (r *Repository) FetchRef(ctx context.Context, remote, ref string) error {
+	_, err := r.run(ctx, "fetch", remote, ref)
+	if err != nil {
+		return fmt.Errorf("fetching %s from %s: %w", ref, remote, err)
+	}
+	return nil
+}
+
+// FetchRefTo fetches a remote ref and maps it to a local ref.
+// Example: FetchRefTo(ctx, "origin", "refs/pull/123/head", "refs/remotes/origin/pr/123")
+// This creates a trackable local reference, unlike FetchRef which only updates FETCH_HEAD.
+func (r *Repository) FetchRefTo(ctx context.Context, remote, remoteRef, localRef string) error {
+	refspec := fmt.Sprintf("%s:%s", remoteRef, localRef)
+	_, err := r.run(ctx, "fetch", remote, refspec)
+	if err != nil {
+		return fmt.Errorf("fetching %s to %s from %s: %w", remoteRef, localRef, remote, err)
+	}
+	return nil
+}
+
+// GetRemoteURL returns the URL for a remote.
+func (r *Repository) GetRemoteURL(ctx context.Context, remote string) (string, error) {
+	url, err := r.run(ctx, "remote", "get-url", remote)
+	if err != nil {
+		return "", fmt.Errorf("getting remote URL: %w", err)
+	}
+	return url, nil
+}
