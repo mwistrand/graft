@@ -57,6 +57,7 @@ This way, you review one complete feature before moving to the next.
 - One of the following AI backends:
   - Claude API key from [Anthropic](https://console.anthropic.com/)
   - GitHub Copilot subscription with [copilot-api](https://github.com/ericc-ch/copilot-api) proxy
+- [GitHub CLI](https://cli.github.com/) (optional, required for PR URL reviews)
 
 ### From Source
 
@@ -145,6 +146,44 @@ graft review origin/develop
 
 # Review the last 5 commits
 graft review HEAD~5
+```
+
+### Reviewing GitHub Pull Requests
+
+You can review a GitHub pull request directly by providing its URL:
+
+```bash
+# Review a GitHub PR
+graft review https://github.com/owner/repo/pull/123
+```
+
+**Requirements:**
+- [GitHub CLI](https://cli.github.com/) must be installed and authenticated
+- You must be in a local clone of the repository
+
+**Setup:**
+```bash
+# Install GitHub CLI
+brew install gh
+
+# Authenticate with GitHub
+gh auth login
+```
+
+**How it works:**
+1. Graft parses the PR URL and fetches metadata via `gh`
+2. Validates that your local repo matches the PR's repository
+3. Fetches the PR's commits if not available locally
+4. Reviews the diff between the PR's base and head branches
+
+**Enterprise GitHub:** Enterprise instances are supported automatically. Just use your enterprise PR URL and ensure `gh` is authenticated for that host.
+
+**Merged/Closed PRs:** Graft can review merged or closed PRs. It will display the PR state and use the exact commit SHA from the PR.
+
+```
+PR #123 [MERGED]: Add user authentication
+  feature/auth -> main
+  Note: Reviewing based on commit abc123def456
 ```
 
 ### Options
@@ -460,13 +499,15 @@ graft/
 │   ├── cli/            # Cobra CLI commands
 │   ├── config/         # Configuration management
 │   ├── git/            # Git operations
+│   ├── pr/             # Pull request URL parsing and resolution
 │   ├── prompt/         # Interactive terminal prompts
 │   ├── provider/       # AI provider abstraction
 │   │   ├── claude/     # Claude implementation
 │   │   ├── copilot/    # Copilot implementation (via copilot-api proxy)
 │   │   ├── mock/       # Mock for testing
 │   │   └── testpair/   # Test/implementation file pairing
-│   └── render/         # Output rendering
+│   ├── render/         # Output rendering
+│   └── tui/            # Interactive terminal UI
 ├── docs/               # Documentation
 ├── Makefile
 └── README.md

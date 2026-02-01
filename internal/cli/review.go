@@ -15,6 +15,7 @@ import (
 	"github.com/mwistrand/graft/internal/analysis"
 	"github.com/mwistrand/graft/internal/config"
 	"github.com/mwistrand/graft/internal/git"
+	"github.com/mwistrand/graft/internal/pr"
 	"github.com/mwistrand/graft/internal/prompt"
 	"github.com/mwistrand/graft/internal/provider"
 	"github.com/mwistrand/graft/internal/provider/claude"
@@ -45,9 +46,10 @@ var (
 )
 
 var reviewCmd = &cobra.Command{
-	Use:   "review <base-branch>",
-	Short: "Review changes against a base branch",
-	Long: `Review changes between the current branch and a base branch.
+	Use:   "review <base-branch|pr-url>",
+	Short: "Review changes against a base branch or pull request",
+	Long: `Review changes between the current branch and a base branch,
+or review a pull request by providing its URL.
 
 This command:
 1. Summarizes the changes using AI (incorporating commit messages)
@@ -55,9 +57,15 @@ This command:
 3. Displays diffs in that order, piped through Delta for beautiful rendering
 
 Example:
-  graft review main         Review changes against main
-  graft review origin/main  Review changes against remote main
-  graft review HEAD~5       Review the last 5 commits`,
+  graft review main                                    Review changes against main
+  graft review origin/main                             Review changes against remote main
+  graft review HEAD~5                                  Review the last 5 commits
+  graft review https://github.com/owner/repo/pull/123  Review a GitHub pull request
+
+GitHub PR URLs require the GitHub CLI (gh) to be installed and authenticated:
+  brew install gh && gh auth login
+
+Enterprise GitHub instances are also supported.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runReview,
 }
@@ -105,6 +113,36 @@ func runReview(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("not in a git repository")
 		}
 		return fmt.Errorf("opening repository: %w", err)
+	}
+
+	// Check if input is a PR URL
+	var prMeta *pr.PRMetadata
+	if pr.IsPRURL(baseRef) {
+		Verbose("Detected PR URL, fetching metadata...")
+		prMeta, err = resolvePRURL(ctx, repo, baseRef)
+		if err != nil {
+			return err
+		}
+
+		// Update baseRef to use the PR's base branch
+		baseRef = prMeta.BaseRef
+
+		// Display PR info with state indicator
+		stateIndicator := ""
+		switch prMeta.State {
+		case pr.StateMerged:
+			stateIndicator = " [MERGED]"
+		case pr.StateClosed:
+			stateIndicator = " [CLOSED]"
+		}
+		fmt.Printf("PR #%d%s: %s\n", prMeta.Number, stateIndicator, prMeta.Title)
+		fmt.Printf("  %s -> %s\n", prMeta.HeadRef, prMeta.BaseRef)
+
+		// Warn about merged/closed PRs
+		if prMeta.State != pr.StateOpen {
+			fmt.Printf("  Note: Reviewing based on commit %s\n", truncateSHA(prMeta.HeadSHA))
+		}
+		fmt.Println()
 	}
 
 	// Validate base branch
@@ -1014,4 +1052,117 @@ func outputQuickReview(resp *provider.QuickReviewResponse) error {
 	fmt.Println()
 
 	return nil
+}
+
+// resolvePRURL fetches PR metadata and ensures commits are available locally.
+func resolvePRURL(ctx context.Context, repo *git.Repository, url string) (*pr.PRMetadata, error) {
+	meta, err := pr.Resolve(ctx, url)
+	if err != nil {
+		return nil, handlePRError(err)
+	}
+
+	// Check if we're in the right repository
+	if err := validateRepository(ctx, repo, meta); err != nil {
+		return nil, err
+	}
+
+	// Ensure the PR's commits are fetched
+	if err := ensureCommitsFetched(ctx, repo, meta); err != nil {
+		return nil, err
+	}
+
+	return meta, nil
+}
+
+// validateRepository checks that the local repo matches the PR's repo.
+func validateRepository(ctx context.Context, repo *git.Repository, meta *pr.PRMetadata) error {
+	remoteURL, err := repo.GetRemoteURL(ctx, "origin")
+	if err != nil {
+		return fmt.Errorf("getting remote URL: %w", err)
+	}
+
+	// Parse the remote URL to extract host, owner, and repo
+	remoteInfo, err := pr.ParseRemoteURL(remoteURL)
+	if err != nil {
+		return fmt.Errorf("parsing remote URL %q: %w", remoteURL, err)
+	}
+
+	// Compare parsed components
+	if !remoteInfo.Matches(&meta.PRInfo) {
+		return fmt.Errorf("local repository (%s/%s on %s) doesn't match PR repository (%s/%s on %s)",
+			remoteInfo.Owner, remoteInfo.Repo, remoteInfo.Host,
+			meta.Owner, meta.Repo, meta.Host)
+	}
+
+	return nil
+}
+
+// ensureCommitsFetched fetches the PR's commits if not available locally.
+func ensureCommitsFetched(ctx context.Context, repo *git.Repository, meta *pr.PRMetadata) error {
+	// Check if we have the head commit
+	if repo.HasRef(ctx, meta.HeadSHA) {
+		Verbose("PR commits already available locally")
+		return nil
+	}
+
+	// Fetch the PR branch
+	Verbose("Fetching PR commits from remote...")
+
+	// For GitHub PRs, we can fetch the PR ref directly with an explicit refspec
+	if meta.Platform == pr.PlatformGitHub {
+		remoteRef := fmt.Sprintf("refs/pull/%d/head", meta.Number)
+		localRef := fmt.Sprintf("refs/remotes/origin/pr/%d", meta.Number)
+
+		if err := repo.FetchRefTo(ctx, "origin", remoteRef, localRef); err != nil {
+			// Fall back to fetching the head branch
+			Verbose("Could not fetch PR ref, trying head branch...")
+			if err := repo.FetchRef(ctx, "origin", meta.HeadRef); err != nil {
+				return fmt.Errorf("fetching PR commits: %w", err)
+			}
+		}
+
+		// Verify we now have the commit
+		if !repo.HasRef(ctx, meta.HeadSHA) {
+			return fmt.Errorf("PR head commit %s not found after fetch; the branch may have been force-pushed or deleted", truncateSHA(meta.HeadSHA))
+		}
+		return nil
+	}
+
+	// For other platforms, fetch the head branch
+	if err := repo.FetchRef(ctx, "origin", meta.HeadRef); err != nil {
+		return fmt.Errorf("fetching PR commits: %w", err)
+	}
+
+	// Verify we now have the commit
+	if !repo.HasRef(ctx, meta.HeadSHA) {
+		return fmt.Errorf("PR head commit %s not found after fetch; the branch may have been force-pushed or deleted", truncateSHA(meta.HeadSHA))
+	}
+	return nil
+}
+
+// truncateSHA returns a truncated SHA for display (up to 12 chars).
+func truncateSHA(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
+}
+
+// handlePRError converts PR errors to user-friendly messages.
+func handlePRError(err error) error {
+	switch e := err.(type) {
+	case *pr.ErrCLINotFound:
+		return fmt.Errorf(`%w
+
+To review GitHub PRs, install the GitHub CLI:
+  brew install gh && gh auth login
+
+Or visit: https://cli.github.com/`, e)
+
+	case *pr.ErrPRNotFound:
+		return fmt.Errorf("pull request not found: %s\n\nCheck that the URL is correct and you have access to the repository", e.URL)
+
+	default:
+		return err
+	}
 }
