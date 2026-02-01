@@ -40,6 +40,7 @@ internal/
     claude/          → Anthropic Claude API implementation
     copilot/         → GitHub Copilot via copilot-api proxy
     mock/            → Testing mock
+    testpair/        → Test/implementation file pairing utilities
   render/            → Output rendering (Delta subprocess or fallback)
 ```
 

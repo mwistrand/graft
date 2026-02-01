@@ -17,11 +17,12 @@ import (
 	"github.com/mwistrand/graft/internal/git"
 	"github.com/mwistrand/graft/internal/prompt"
 	"github.com/mwistrand/graft/internal/provider"
-	"github.com/mwistrand/graft/internal/tui"
 	"github.com/mwistrand/graft/internal/provider/claude"
 	"github.com/mwistrand/graft/internal/provider/copilot"
 	"github.com/mwistrand/graft/internal/provider/prompts"
+	"github.com/mwistrand/graft/internal/provider/testpair"
 	"github.com/mwistrand/graft/internal/render"
+	"github.com/mwistrand/graft/internal/tui"
 )
 
 var (
@@ -31,6 +32,7 @@ var (
 	modelName        string
 	noDelta          bool
 	testsFirst       bool
+	inlineTests      bool
 	refresh          bool
 	noAnalyze        bool
 	aiReview         bool
@@ -67,6 +69,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&modelName, "model", "", "Model to use (default from config)")
 	reviewCmd.Flags().BoolVar(&noDelta, "no-delta", false, "Disable Delta rendering")
 	reviewCmd.Flags().BoolVar(&testsFirst, "tests-first", false, "Show test files before implementation")
+	reviewCmd.Flags().BoolVar(&inlineTests, "inline-tests", false, "Show test files alongside their implementation")
 	reviewCmd.Flags().BoolVar(&refresh, "refresh", false, "Re-analyze repository and refresh AI cache")
 	reviewCmd.Flags().BoolVar(&noAnalyze, "no-analyze", false, "Skip repository analysis")
 	reviewCmd.Flags().BoolVar(&aiReview, "ai-review", false, "Generate detailed AI code review")
@@ -440,6 +443,11 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		filesToReview = buildFileList(diffResult.Files, orderedFiles)
+	}
+
+	// Pair test files with their implementation if --inline-tests is set
+	if inlineTests {
+		filesToReview = testpair.PairFiles(filesToReview, testsFirst)
 	}
 
 	// Display diffs with interactive TUI

@@ -168,6 +168,9 @@ graft review main --model gpt-4o
 # Show tests before implementation files
 graft review main --tests-first
 
+# Show test files alongside their implementation
+graft review main --inline-tests
+
 # Force refresh (bypass cache and re-analyze)
 graft review main --refresh
 
@@ -461,7 +464,8 @@ graft/
 │   ├── provider/       # AI provider abstraction
 │   │   ├── claude/     # Claude implementation
 │   │   ├── copilot/    # Copilot implementation (via copilot-api proxy)
-│   │   └── mock/       # Mock for testing
+│   │   ├── mock/       # Mock for testing
+│   │   └── testpair/   # Test/implementation file pairing
 │   └── render/         # Output rendering
 ├── docs/               # Documentation
 ├── Makefile
