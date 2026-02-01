@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // Config holds all configuration for the graft CLI.
@@ -33,6 +34,32 @@ type Config struct {
 	// If the user doesn't respond within this time, the review exits.
 	// Set to 0 to disable timeout. Default is 30 minutes.
 	PromptTimeout int `json:"prompt_timeout,omitempty"`
+
+	// Review preference fields - these can be set as defaults in config
+	// and overridden by CLI flags.
+
+	// TestsFirst shows test files before their implementation files.
+	TestsFirst bool `json:"tests_first,omitempty"`
+
+	// InlineTests shows test files alongside their implementation files.
+	InlineTests bool `json:"inline_tests,omitempty"`
+
+	// NoDelta disables Delta rendering for diffs.
+	NoDelta bool `json:"no_delta,omitempty"`
+
+	// NoAnalyze skips repository structure analysis.
+	NoAnalyze bool `json:"no_analyze,omitempty"`
+
+	// MajorOnly only reviews core and supporting groups, skipping minor changes.
+	MajorOnly bool `json:"major_only,omitempty"`
+
+	// ReviewCategories specifies which categories to focus on in AI reviews.
+	// Comma-separated list: design,functionality,complexity,tests,naming,comments,style,documentation
+	ReviewCategories string `json:"review_categories,omitempty"`
+
+	// ReviewSeverity filters review output by minimum severity level.
+	// Valid values: critical, suggestion, nit
+	ReviewSeverity string `json:"review_severity,omitempty"`
 }
 
 // Load reads configuration from the default config file and environment variables.
@@ -139,6 +166,35 @@ func (c *Config) applyEnvOverrides() {
 			c.PromptTimeout = timeout
 		}
 	}
+	// Review preference overrides
+	if v := os.Getenv("GRAFT_TESTS_FIRST"); v != "" {
+		c.TestsFirst = parseBool(v)
+	}
+	if v := os.Getenv("GRAFT_INLINE_TESTS"); v != "" {
+		c.InlineTests = parseBool(v)
+	}
+	if v := os.Getenv("GRAFT_NO_DELTA"); v != "" {
+		c.NoDelta = parseBool(v)
+	}
+	if v := os.Getenv("GRAFT_NO_ANALYZE"); v != "" {
+		c.NoAnalyze = parseBool(v)
+	}
+	if v := os.Getenv("GRAFT_MAJOR_ONLY"); v != "" {
+		c.MajorOnly = parseBool(v)
+	}
+	if v := os.Getenv("GRAFT_REVIEW_CATEGORIES"); v != "" {
+		c.ReviewCategories = v
+	}
+	if v := os.Getenv("GRAFT_REVIEW_SEVERITY"); v != "" {
+		c.ReviewSeverity = v
+	}
+}
+
+// parseBool parses a string as a boolean value.
+// Returns true for "true", "1", "yes" (case-insensitive), false otherwise.
+func parseBool(s string) bool {
+	s = strings.ToLower(s)
+	return s == "true" || s == "1" || s == "yes"
 }
 
 // Set updates a configuration key with the given value.
@@ -165,6 +221,20 @@ func (c *Config) Set(key, value string) error {
 			return fmt.Errorf("invalid prompt-timeout value %q: must be >= 0", value)
 		}
 		c.PromptTimeout = timeout
+	case "tests-first":
+		c.TestsFirst = parseBool(value)
+	case "inline-tests":
+		c.InlineTests = parseBool(value)
+	case "no-delta":
+		c.NoDelta = parseBool(value)
+	case "no-analyze":
+		c.NoAnalyze = parseBool(value)
+	case "major-only":
+		c.MajorOnly = parseBool(value)
+	case "review-categories":
+		c.ReviewCategories = value
+	case "review-severity":
+		c.ReviewSeverity = value
 	default:
 		return fmt.Errorf("unknown configuration key: %s", key)
 	}
@@ -194,6 +264,20 @@ func (c *Config) Get(key string) (string, error) {
 		return c.DeltaPath, nil
 	case "prompt-timeout":
 		return strconv.Itoa(c.PromptTimeout), nil
+	case "tests-first":
+		return strconv.FormatBool(c.TestsFirst), nil
+	case "inline-tests":
+		return strconv.FormatBool(c.InlineTests), nil
+	case "no-delta":
+		return strconv.FormatBool(c.NoDelta), nil
+	case "no-analyze":
+		return strconv.FormatBool(c.NoAnalyze), nil
+	case "major-only":
+		return strconv.FormatBool(c.MajorOnly), nil
+	case "review-categories":
+		return c.ReviewCategories, nil
+	case "review-severity":
+		return c.ReviewSeverity, nil
 	default:
 		return "", fmt.Errorf("unknown configuration key: %s", key)
 	}

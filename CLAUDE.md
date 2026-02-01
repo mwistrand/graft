@@ -103,13 +103,63 @@ cacheKey := provider.GenerateCacheKey(baseRef, commits)
 
 Config file: `~/.config/graft/config.json`
 
-Key settings:
+### Provider Settings
 - `provider`: "claude" or "copilot"
-- `anthropic-api-key`: For Claude
+- `model`: Model to use (if not set, interactive prompt appears)
+- `anthropic-api-key`: For Claude provider
+- `openai-api-key`: For OpenAI provider
 - `copilot-base-url`: For Copilot proxy (default: http://localhost:4141)
-- `prompt-timeout`: Timeout in minutes for interactive prompts (default: 30, use 0 to disable)
 
-Environment overrides: `ANTHROPIC_API_KEY`, `COPILOT_BASE_URL`, `GRAFT_PROVIDER`, `GRAFT_MODEL`, `GRAFT_PROMPT_TIMEOUT`
+### Review Preferences
+
+These CLI flags can be persisted in config to set defaults:
+
+```bash
+graft config set tests-first true       # Show test files before implementation
+graft config set inline-tests true      # Show test files alongside implementation
+graft config set no-delta true          # Disable Delta rendering
+graft config set no-analyze true        # Skip repository analysis
+graft config set major-only true        # Only review core/supporting groups
+graft config set review-categories "design,functionality"  # Focus AI review
+graft config set review-severity "critical"  # Filter review output
+graft config set prompt-timeout 60      # Timeout in minutes (0 = disable)
+```
+
+CLI flags always override config values.
+
+### Model Selection
+
+There is no default model. If no model is configured:
+- An interactive model selection prompt appears
+- Use `--model <name>` to specify directly
+- Use `--select-model` to force the prompt even when a model is configured
+
+```bash
+graft review main                    # Prompts for model if not configured
+graft review main --model gpt-4o     # Use specific model
+graft review main --select-model     # Force model selection prompt
+```
+
+### Environment Variables
+
+All config options can be overridden via environment variables:
+
+| Config Key | Environment Variable |
+|------------|---------------------|
+| `provider` | `GRAFT_PROVIDER` |
+| `model` | `GRAFT_MODEL` |
+| `anthropic-api-key` | `ANTHROPIC_API_KEY` |
+| `openai-api-key` | `OPENAI_API_KEY` |
+| `copilot-base-url` | `COPILOT_BASE_URL` |
+| `delta-path` | `GRAFT_DELTA_PATH` |
+| `prompt-timeout` | `GRAFT_PROMPT_TIMEOUT` |
+| `tests-first` | `GRAFT_TESTS_FIRST` |
+| `inline-tests` | `GRAFT_INLINE_TESTS` |
+| `no-delta` | `GRAFT_NO_DELTA` |
+| `no-analyze` | `GRAFT_NO_ANALYZE` |
+| `major-only` | `GRAFT_MAJOR_ONLY` |
+| `review-categories` | `GRAFT_REVIEW_CATEGORIES` |
+| `review-severity` | `GRAFT_REVIEW_SEVERITY` |
 
 ### Prompt Timeout
 

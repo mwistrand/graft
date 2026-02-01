@@ -30,6 +30,14 @@ func TestConfigSetGet(t *testing.T) {
 		{"openai-api-key", "sk-test456"},
 		{"copilot-base-url", "http://localhost:5000"},
 		{"delta-path", "/usr/local/bin/delta"},
+		{"prompt-timeout", "60"},
+		{"tests-first", "true"},
+		{"inline-tests", "true"},
+		{"no-delta", "true"},
+		{"no-analyze", "true"},
+		{"major-only", "true"},
+		{"review-categories", "design,functionality"},
+		{"review-severity", "critical"},
 	}
 
 	for _, tt := range tests {
@@ -144,7 +152,12 @@ func TestConfigValidate(t *testing.T) {
 
 func TestConfigEnvOverrides(t *testing.T) {
 	// Save and restore environment
-	envVars := []string{"GRAFT_PROVIDER", "GRAFT_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "COPILOT_BASE_URL", "GRAFT_DELTA_PATH"}
+	envVars := []string{
+		"GRAFT_PROVIDER", "GRAFT_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+		"COPILOT_BASE_URL", "GRAFT_DELTA_PATH", "GRAFT_PROMPT_TIMEOUT", "GRAFT_TESTS_FIRST",
+		"GRAFT_INLINE_TESTS", "GRAFT_NO_DELTA", "GRAFT_NO_ANALYZE", "GRAFT_MAJOR_ONLY",
+		"GRAFT_REVIEW_CATEGORIES", "GRAFT_REVIEW_SEVERITY",
+	}
 	saved := make(map[string]string)
 	for _, v := range envVars {
 		saved[v] = os.Getenv(v)
@@ -166,6 +179,14 @@ func TestConfigEnvOverrides(t *testing.T) {
 	os.Setenv("OPENAI_API_KEY", "env-openai-key")
 	os.Setenv("COPILOT_BASE_URL", "http://localhost:5000")
 	os.Setenv("GRAFT_DELTA_PATH", "/custom/delta")
+	os.Setenv("GRAFT_PROMPT_TIMEOUT", "45")
+	os.Setenv("GRAFT_TESTS_FIRST", "true")
+	os.Setenv("GRAFT_INLINE_TESTS", "1")
+	os.Setenv("GRAFT_NO_DELTA", "yes")
+	os.Setenv("GRAFT_NO_ANALYZE", "true")
+	os.Setenv("GRAFT_MAJOR_ONLY", "true")
+	os.Setenv("GRAFT_REVIEW_CATEGORIES", "design,tests")
+	os.Setenv("GRAFT_REVIEW_SEVERITY", "suggestion")
 
 	cfg := DefaultConfig()
 	cfg.applyEnvOverrides()
@@ -187,6 +208,30 @@ func TestConfigEnvOverrides(t *testing.T) {
 	}
 	if cfg.DeltaPath != "/custom/delta" {
 		t.Errorf("DeltaPath = %q, want %q", cfg.DeltaPath, "/custom/delta")
+	}
+	if cfg.PromptTimeout != 45 {
+		t.Errorf("PromptTimeout = %d, want %d", cfg.PromptTimeout, 45)
+	}
+	if !cfg.TestsFirst {
+		t.Error("TestsFirst should be true")
+	}
+	if !cfg.InlineTests {
+		t.Error("InlineTests should be true (parsed from '1')")
+	}
+	if !cfg.NoDelta {
+		t.Error("NoDelta should be true (parsed from 'yes')")
+	}
+	if !cfg.NoAnalyze {
+		t.Error("NoAnalyze should be true")
+	}
+	if !cfg.MajorOnly {
+		t.Error("MajorOnly should be true")
+	}
+	if cfg.ReviewCategories != "design,tests" {
+		t.Errorf("ReviewCategories = %q, want %q", cfg.ReviewCategories, "design,tests")
+	}
+	if cfg.ReviewSeverity != "suggestion" {
+		t.Errorf("ReviewSeverity = %q, want %q", cfg.ReviewSeverity, "suggestion")
 	}
 }
 

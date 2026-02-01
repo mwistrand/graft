@@ -31,6 +31,7 @@ var (
 	skipOrdering     bool
 	providerName     string
 	modelName        string
+	selectModel      bool
 	noDelta          bool
 	testsFirst       bool
 	inlineTests      bool
@@ -74,6 +75,7 @@ func init() {
 	reviewCmd.Flags().BoolVar(&skipOrdering, "no-order", false, "Skip AI ordering, use default order")
 	reviewCmd.Flags().StringVar(&providerName, "provider", "", "AI provider to use (default from config)")
 	reviewCmd.Flags().StringVar(&modelName, "model", "", "Model to use (default from config)")
+	reviewCmd.Flags().BoolVar(&selectModel, "select-model", false, "Force interactive model selection")
 	reviewCmd.Flags().BoolVar(&noDelta, "no-delta", false, "Disable Delta rendering")
 	reviewCmd.Flags().BoolVar(&testsFirst, "tests-first", false, "Show test files before implementation")
 	reviewCmd.Flags().BoolVar(&inlineTests, "inline-tests", false, "Show test files alongside their implementation")
@@ -102,6 +104,21 @@ func runReview(cmd *cobra.Command, args []string) error {
 	cfg := GetConfig()
 	if cfg == nil {
 		return fmt.Errorf("configuration not loaded")
+	}
+
+	// Resolve flags with config fallbacks (CLI flags override config)
+	effectiveTestsFirst := testsFirst || cfg.TestsFirst
+	effectiveInlineTests := inlineTests || cfg.InlineTests
+	effectiveNoDelta := noDelta || cfg.NoDelta
+	effectiveNoAnalyze := noAnalyze || cfg.NoAnalyze
+	effectiveMajorOnly := majorOnly || cfg.MajorOnly
+	effectiveReviewCategories := reviewCategories
+	if effectiveReviewCategories == "" {
+		effectiveReviewCategories = cfg.ReviewCategories
+	}
+	effectiveReviewSeverity := reviewSeverity
+	if effectiveReviewSeverity == "" {
+		effectiveReviewSeverity = cfg.ReviewSeverity
 	}
 
 	// Create git repository
@@ -181,7 +198,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// Repository analysis for smarter ordering
 	var repoContext string
-	if !noAnalyze && !skipOrdering {
+	if !effectiveNoAnalyze && !skipOrdering {
 		repoContext, err = getRepoContext(repoDir)
 		if err != nil {
 			Verbose("Warning: failed to analyze repository: %v", err)
@@ -190,8 +207,8 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	// Create renderer
 	renderOpts := render.DefaultOptions()
-	renderOpts.UseDelta = !noDelta && render.IsDeltaAvailable()
-	if !renderOpts.UseDelta && !noDelta {
+	renderOpts.UseDelta = !effectiveNoDelta && render.IsDeltaAvailable()
+	if !renderOpts.UseDelta && !effectiveNoDelta {
 		fmt.Println("Note: Delta not found, using basic diff rendering.")
 		fmt.Println("Install Delta for better rendering: https://github.com/dandavison/delta")
 		fmt.Println()
@@ -205,12 +222,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 		Verbose("Initializing AI provider...")
 		aiProvider, cleanup, err = initProvider(ctx, cfg)
 		if err != nil {
-			fmt.Printf("Warning: %v\n", err)
-			fmt.Println("Skipping AI analysis. Use --no-summary --no-order to suppress this warning.")
-			fmt.Println()
-			skipSummary = true
-			skipOrdering = true
-			quickReview = false
+			return fmt.Errorf("AI provider initialization failed: %w", err)
 		}
 		if cleanup != nil {
 			defer cleanup()
@@ -287,7 +299,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 					Files:       diffResult.Files,
 					Commits:     diffResult.Commits,
 					RepoContext: repoContext,
-					TestsFirst:  testsFirst,
+					TestsFirst:  effectiveTestsFirst,
 				})
 				orderCh <- orderResult{files: files, err: err}
 			}()
@@ -360,7 +372,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 			fmt.Println("Generating detailed code review...")
 
 			reviewOpts := provider.DefaultReviewOptions()
-			reviewOpts.Categories = provider.ParseReviewCategories(reviewCategories)
+			reviewOpts.Categories = provider.ParseReviewCategories(effectiveReviewCategories)
 
 			aiReviewResponse, err = aiProvider.ReviewChanges(ctx, &provider.ReviewRequest{
 				Files:        diffResult.Files,
@@ -378,7 +390,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 	// Output AI review before prompting to continue
 	if aiReview != "" {
 		if aiReviewResponse != nil {
-			severityFilter := provider.ParseReviewSeverity(reviewSeverity)
+			severityFilter := provider.ParseReviewSeverity(effectiveReviewSeverity)
 			// If aiReview is "true" (no output file specified), output to console
 			outputPath := ""
 			if aiReview != "true" {
@@ -389,29 +401,6 @@ func runReview(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			fmt.Println("Warning: AI review was requested but no review was generated")
-		}
-	}
-
-	// Prompt user to continue (after showing summary and AI review)
-	if summary != nil || aiReviewResponse != nil {
-		// Determine effective timeout (flag overrides config, -1 means use config)
-		effectiveTimeout := cfg.PromptTimeout
-		if promptTimeout >= 0 {
-			effectiveTimeout = promptTimeout
-		}
-
-		var timeoutDuration time.Duration
-		if effectiveTimeout > 0 {
-			timeoutDuration = time.Duration(effectiveTimeout) * time.Minute
-		}
-
-		result := prompt.ConfirmContinue("", timeoutDuration)
-		if result.TimedOut {
-			return fmt.Errorf("review timed out after %d minutes waiting for user input", effectiveTimeout)
-		}
-		if !result.Continue {
-			fmt.Println("Review cancelled.")
-			return nil
 		}
 	}
 
@@ -464,6 +453,26 @@ func runReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Prompt user to continue before showing diffs
+	effectiveTimeout := cfg.PromptTimeout
+	if promptTimeout >= 0 {
+		effectiveTimeout = promptTimeout
+	}
+
+	var timeoutDuration time.Duration
+	if effectiveTimeout > 0 {
+		timeoutDuration = time.Duration(effectiveTimeout) * time.Minute
+	}
+
+	confirmResult := prompt.ConfirmContinue("", timeoutDuration)
+	if confirmResult.TimedOut {
+		return fmt.Errorf("review timed out after %d minutes waiting for user input", effectiveTimeout)
+	}
+	if !confirmResult.Continue {
+		fmt.Println("Review cancelled.")
+		return nil
+	}
+
 	// Build file list for display
 	var filesToReview []provider.OrderedFile
 
@@ -472,7 +481,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 		groupsToShow := orderedFiles.Groups
 
 		// Filter out minor groups if --major-only is set
-		if majorOnly {
+		if effectiveMajorOnly {
 			groupsToShow, _ = filterMajorGroups(orderedFiles.Groups)
 		}
 
@@ -488,12 +497,12 @@ func runReview(cmd *cobra.Command, args []string) error {
 	}
 
 	// Pair test files with their implementation if --inline-tests is set
-	if inlineTests {
-		filesToReview = testpair.PairFiles(filesToReview, testsFirst)
+	if effectiveInlineTests {
+		filesToReview = testpair.PairFiles(filesToReview, effectiveTestsFirst)
 	}
 
 	// Display diffs with interactive TUI
-	if err := tui.Run(filesToReview, repoDir, baseRef, !noDelta); err != nil {
+	if err := tui.Run(filesToReview, repoDir, baseRef, !effectiveNoDelta); err != nil {
 		return fmt.Errorf("running review TUI: %w", err)
 	}
 
@@ -509,10 +518,19 @@ func initProvider(ctx context.Context, cfg *config.Config) (provider.Provider, f
 		pName = cfg.Provider
 	}
 
+	// Determine effective model (CLI flag overrides config)
 	model := modelName
 	if model == "" {
 		model = cfg.Model
 	}
+
+	// Determine if model selection is needed:
+	// - --select-model forces model selection (overrides even --model flag)
+	// - No model configured requires model selection
+	needsModelSelection := selectModel || model == ""
+
+	var p provider.Provider
+	var cleanup func()
 
 	switch pName {
 	case "claude", "":
@@ -520,19 +538,21 @@ func initProvider(ctx context.Context, cfg *config.Config) (provider.Provider, f
 		if apiKey == "" {
 			return nil, nil, fmt.Errorf("Anthropic API key not set. Run 'graft config set anthropic-api-key <key>' or set ANTHROPIC_API_KEY")
 		}
-		p, err := claude.New(apiKey, model)
-		return p, nil, err
+		cp, err := claude.New(apiKey, "")
+		if err != nil {
+			return nil, nil, err
+		}
+		p = cp
 
 	case "copilot":
 		baseURL := cfg.CopilotBaseURL
-		copilotModel := modelName
-		p, err := copilot.New(baseURL, copilotModel)
+		cp, err := copilot.New(baseURL, "")
 		if err != nil {
 			return nil, nil, err
 		}
 
 		// Ensure the copilot-api proxy is running
-		started, err := p.EnsureProxyRunning(ctx, func(format string, args ...any) {
+		started, err := cp.EnsureProxyRunning(ctx, func(format string, args ...any) {
 			fmt.Printf(format+"\n", args...)
 		})
 		if err != nil {
@@ -540,33 +560,47 @@ func initProvider(ctx context.Context, cfg *config.Config) (provider.Provider, f
 		}
 
 		// Return cleanup function if we started the proxy
-		var cleanup func()
 		if started {
 			cleanup = func() {
 				fmt.Println("Stopping copilot-api proxy...")
-				p.Close()
+				cp.Close()
 			}
 		}
-
-		// Prompt for model selection if no --model flag was provided
-		if modelName == "" {
-			selected, err := promptForModel(ctx, p)
-			if err != nil {
-				// On error, fall back to default model and inform the user
-				fmt.Printf("Note: %v\n", err)
-				p.SetModel(copilot.DefaultModel)
-				fmt.Printf("Using default model: %s\n\n", p.Model())
-			} else if selected != "" {
-				p.SetModel(selected)
-				fmt.Printf("Using model: %s\n\n", selected)
-			}
-		}
-
-		return p, cleanup, nil
+		p = cp
 
 	default:
 		return nil, nil, fmt.Errorf("unknown provider %q; available: claude, copilot", pName)
 	}
+
+	// Handle model selection
+	if needsModelSelection {
+		// Check if provider supports model listing
+		lister, supportsListing := p.(provider.ModelLister)
+		if !supportsListing {
+			return nil, nil, fmt.Errorf("no model configured and provider %q does not support model listing; use --model flag or run 'graft config set model <model>'", pName)
+		}
+
+		selected, err := promptForModel(ctx, lister)
+		if err != nil {
+			return nil, nil, fmt.Errorf("model selection failed: %w", err)
+		}
+		if selected == "" {
+			return nil, nil, fmt.Errorf("no model selected")
+		}
+
+		// Set the selected model
+		if selector, ok := p.(provider.ModelSelector); ok {
+			selector.SetModel(selected)
+		}
+		fmt.Printf("Using model: %s\n\n", selected)
+	} else {
+		// Use the configured model
+		if selector, ok := p.(provider.ModelSelector); ok {
+			selector.SetModel(model)
+		}
+	}
+
+	return p, cleanup, nil
 }
 
 // buildFileList creates the ordered list of files to review.
@@ -768,12 +802,7 @@ func getRepoContext(repoDir string) (string, error) {
 }
 
 // promptForModel asks the user to select a model from the available options.
-func promptForModel(ctx context.Context, p provider.Provider) (string, error) {
-	lister, ok := p.(provider.ModelLister)
-	if !ok {
-		return "", fmt.Errorf("provider does not support listing models")
-	}
-
+func promptForModel(ctx context.Context, lister provider.ModelLister) (string, error) {
 	Verbose("Fetching available models...")
 	models, err := lister.ListModels(ctx)
 	if err != nil {

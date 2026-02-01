@@ -12,8 +12,12 @@ import (
 	"github.com/mwistrand/graft/internal/provider"
 )
 
-// DefaultModel is the default Claude model to use.
-const DefaultModel = "claude-sonnet-4-20250514"
+// AvailableModels defines the Claude models available for selection.
+var AvailableModels = []provider.ModelInfo{
+	{ID: "claude-opus-4-5-20250514", Name: "Claude Opus 4.5", Description: "Most capable model for complex tasks"},
+	{ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", Description: "Balanced performance and speed"},
+	{ID: "claude-haiku-3-5-20241022", Name: "Claude Haiku 3.5", Description: "Fast and efficient for simpler tasks"},
+}
 
 // Provider implements the provider.Provider interface using Claude.
 type Provider struct {
@@ -22,14 +26,10 @@ type Provider struct {
 }
 
 // New creates a new Claude provider with the given API key and model.
-// If model is empty, DefaultModel is used.
+// Model can be empty initially and set later via SetModel.
 func New(apiKey, model string) (*Provider, error) {
 	if apiKey == "" {
 		return nil, errors.New("anthropic API key is required")
-	}
-
-	if model == "" {
-		model = DefaultModel
 	}
 
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
@@ -38,6 +38,21 @@ func New(apiKey, model string) (*Provider, error) {
 		client: client,
 		model:  anthropic.Model(model),
 	}, nil
+}
+
+// ListModels returns the available Claude models.
+func (p *Provider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
+	return AvailableModels, nil
+}
+
+// SetModel updates the model used by this provider.
+func (p *Provider) SetModel(model string) {
+	p.model = anthropic.Model(model)
+}
+
+// Model returns the currently configured model.
+func (p *Provider) Model() string {
+	return string(p.model)
 }
 
 // Name returns "claude".

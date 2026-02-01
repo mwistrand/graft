@@ -19,9 +19,6 @@ import (
 const (
 	// DefaultBaseURL is the default URL for the copilot-api proxy.
 	DefaultBaseURL = "http://localhost:4141"
-
-	// DefaultModel is the default model to use with the proxy.
-	DefaultModel = "gpt-4"
 )
 
 // Provider implements the provider.Provider interface using a copilot-api proxy.
