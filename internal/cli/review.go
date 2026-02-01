@@ -36,8 +36,7 @@ var (
 	inlineTests      bool
 	refresh          bool
 	noAnalyze        bool
-	aiReview         bool
-	aiReviewOutput   string
+	aiReview         string
 	promptTimeout    int
 	reviewCategories string
 	reviewSeverity   string
@@ -80,8 +79,8 @@ func init() {
 	reviewCmd.Flags().BoolVar(&inlineTests, "inline-tests", false, "Show test files alongside their implementation")
 	reviewCmd.Flags().BoolVar(&refresh, "refresh", false, "Re-analyze repository and refresh AI cache")
 	reviewCmd.Flags().BoolVar(&noAnalyze, "no-analyze", false, "Skip repository analysis")
-	reviewCmd.Flags().BoolVar(&aiReview, "ai-review", false, "Generate detailed AI code review")
-	reviewCmd.Flags().StringVar(&aiReviewOutput, "ai-review-output", "", "Write AI review to file instead of console")
+	reviewCmd.Flags().StringVar(&aiReview, "ai-review", "", "Generate detailed AI code review (optionally specify output file)")
+	reviewCmd.Flags().Lookup("ai-review").NoOptDefVal = "true"
 	reviewCmd.Flags().IntVar(&promptTimeout, "prompt-timeout", -1, "Timeout in minutes for interactive prompts (0 = no timeout, default: 30)")
 	reviewCmd.Flags().StringVar(&reviewCategories, "review-categories", "", "Focus AI review on specific categories (comma-separated: design,functionality,complexity,tests,naming,comments,style,documentation)")
 	reviewCmd.Flags().StringVar(&reviewSeverity, "review-severity", "", "Filter review output by minimum severity (critical, suggestion, nit)")
@@ -333,7 +332,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 	// Handle AI review generation (before prompting user to continue)
 	var aiReviewResponse *provider.ReviewResponse
 	var reviewFromCache bool
-	if aiReview {
+	if aiReview != "" {
 		// Check if we have cached review (with non-empty content)
 		if cachedReview != nil && cachedReview.Review != nil && cachedReview.Review.Content != "" && !refresh {
 			Verbose("Using cached AI review")
@@ -377,10 +376,15 @@ func runReview(cmd *cobra.Command, args []string) error {
 	}
 
 	// Output AI review before prompting to continue
-	if aiReview {
+	if aiReview != "" {
 		if aiReviewResponse != nil {
 			severityFilter := provider.ParseReviewSeverity(reviewSeverity)
-			if err := outputAIReview(aiReviewResponse, aiReviewOutput, severityFilter); err != nil {
+			// If aiReview is "true" (no output file specified), output to console
+			outputPath := ""
+			if aiReview != "true" {
+				outputPath = aiReview
+			}
+			if err := outputAIReview(aiReviewResponse, outputPath, severityFilter); err != nil {
 				return fmt.Errorf("outputting AI review: %w", err)
 			}
 		} else {
@@ -431,7 +435,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save to cache if we got new results from AI
-	if !summaryFromCache || !orderingFromCache || (aiReview && !reviewFromCache && aiReviewResponse != nil) {
+	if !summaryFromCache || !orderingFromCache || (aiReview != "" && !reviewFromCache && aiReviewResponse != nil) {
 		// Preserve existing cached review if we didn't generate a new one
 		reviewToCache := aiReviewResponse
 		if reviewToCache == nil && cachedReview != nil {

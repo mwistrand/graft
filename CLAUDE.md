@@ -88,7 +88,7 @@ Use `--major-only` to skip minor groups entirely.
 cacheKey := provider.GenerateCacheKey(baseRef, commits)
 ```
 
-**AI Code Review**: The `--ai-review` flag generates structured code reviews with categories (design, functionality, complexity, tests, naming, comments, style, documentation, praise) and severity levels (critical, suggestion, nit). Use `--review-categories` to focus on specific categories and `--review-severity` to filter output. Custom system prompts can be placed at `.graft/code-reviewer.md` to override the default review approach.
+**AI Code Review**: The `--ai-review` flag generates structured code reviews with categories (design, functionality, complexity, tests, naming, comments, style, documentation, praise) and severity levels (critical, suggestion, nit). Use `--ai-review` alone to output to console, or `--ai-review=path/to/file.md` to write to a file. Use `--review-categories` to focus on specific categories and `--review-severity` to filter output. Custom system prompts can be placed at `.graft/code-reviewer.md` to override the default review approach.
 
 **Copilot Proxy**: The copilot provider auto-starts `npx copilot-api@latest` if not running, with a 2-minute timeout for GitHub authentication.
 

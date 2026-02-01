@@ -217,7 +217,7 @@ graft review main --refresh
 graft review main --ai-review
 
 # Write AI review to a file
-graft review main --ai-review --ai-review-output review.md
+graft review main --ai-review=review.md
 
 # Focus review on specific categories
 graft review main --ai-review --review-categories design,functionality,tests
@@ -251,7 +251,7 @@ The `--ai-review` flag generates a detailed code review using the configured AI 
 graft review main --ai-review
 
 # Save review to a file
-graft review main --ai-review --ai-review-output review.md
+graft review main --ai-review=review.md
 
 # Focus on specific categories
 graft review main --ai-review --review-categories design,functionality
@@ -262,7 +262,7 @@ graft review main --ai-review --review-severity critical
 
 **Custom Review Prompt:** Place a custom system prompt at `.graft/code-reviewer.md` in your repository to override the default review approach.
 
-**Caching:** AI reviews are cached alongside summaries and ordering. Request the same review without `--ai-review-output` to display a previously generated review in the console.
+**Caching:** AI reviews are cached alongside summaries and ordering. Request the same review with `--ai-review` (no output file) to display a previously generated review in the console.
 
 ### Response Caching
 
