@@ -93,13 +93,104 @@ Return ONLY valid JSON, no additional text.`)
 func BuildOrderPrompt(req *OrderRequest) string {
 	var b strings.Builder
 
-	b.WriteString(`You are an expert code reviewer determining the optimal order to review files in a pull request.
+	b.WriteString(`You are a staff-level software engineer performing a code review.
 
-Your goals:
-1. Identify related changes that form logical features or units of work
-2. Group files by these features so reviewers can understand one feature completely before moving to the next
-3. Order files within each group to maximize understanding (entry points -> business logic -> adapters -> tests)
+Your task is to determine the optimal order in which a human should review the files in this pull request, grouping related files by feature.
 
+Optimize for **human comprehension and cognitive efficiency**, not alphabetical or dependency order.
+
+---
+
+## Review Strategy
+
+### 1. Identify Features or Units of Work
+
+* Infer logical features (e.g. foo, auth) from file paths, naming, domain concepts, and dependencies.
+* Treat each feature as a cohesive unit to be reviewed end-to-end.
+* Do not interleave files from different features unless they are genuinely shared infrastructure.
+
+### 2. Prioritize Features by Review Importance
+
+Prioritize features based on:
+
+* Size and scope of change
+* Impact on behavior or data
+* Cognitive complexity
+* Risk (correctness, security, performance)
+
+Review the most important feature first.
+
+---
+
+### 3. Within a Feature, Prioritize High-Impact Understanding First
+
+When ordering files within a feature:
+
+* First surface the file(s) with the **highest meaningful cognitive load**—the files that best explain what changed and why.
+* Do not rigidly follow architectural layers.
+* Prefer the file that introduces or coordinates the most important logic, even if it is not an entry point.
+
+---
+
+### 4. Order Remaining Files for Context and Flow
+
+After the most important files, order remaining files to build understanding, typically following this pattern when applicable:
+
+1. Entry points (routes, controllers, resources)
+2. Core business logic (services, use cases)
+3. Domain models
+4. Ports or interfaces
+5. Adapters and integrations, grouped by outgoing dependency
+6. Configuration
+7. Tests
+
+Adjust as needed based on the nature of the changes.
+
+---
+
+### 5. Defer Skimmable Changes
+
+Group large numbers of low-impact, mechanical, or repetitive changes later in the order so they can be skimmed efficiently.
+
+---
+
+## Example
+
+A pull request modifies two features: foo and auth.
+The foo feature is the primary focus and contains the most complex new logic. The auth feature is a smaller, supporting change.
+
+### foo feature files (unordered)
+
+* FooResource.java (entry point)
+* FooService.java (core business logic — most complex changes)
+* Foo.java (domain model)
+* GetFoosPort.java (port)
+* SaveFoosPort.java (port)
+* GetFoosRedisCache.java (cache adapter)
+* GetFoosDynamoDbAdapter.java (DB adapter)
+* SaveFoosDynamoDbAdapter.java (DB adapter)
+* FooDynamoDbConfig.java (configuration)
+
+### auth feature files (unordered)
+
+* AuthFilter.java (entry point, minor token validation change)
+* AuthConfig.java (configuration)
+
+### Recommended review order
+
+Since FooService contains the most complex logic changes, it comes first despite not being the entry point. The auth feature follows as a separate group.
+
+FooService.java
+FooResource.java
+Foo.java
+GetFoosPort.java
+GetFoosRedisCache.java
+GetFoosDynamoDbAdapter.java
+SaveFoosPort.java
+SaveFoosDynamoDbAdapter.java
+FooDynamoDbConfig.java
+AuthFilter.java
+AuthConfig.java
 `)
 
 	// Include repository context if available
@@ -190,30 +281,6 @@ Assign each group a significance level based on the nature of changes:
    - Within each significance level, put foundational changes before dependent ones
 
 4. **Handle miscellaneous files**: Group standalone config files, docs, or unrelated small changes into a "Configuration" or "Miscellaneous" group with significance "minor"
-
-## File Ordering Within Groups
-
-Adapt ordering based on the project type:
-
-**For backend projects:**
-1. Entry points (main, cmd, handlers)
-2. Routes/controllers (request handling)
-3. Business logic (services, use cases)
-4. Models/entities (data structures)
-5. Adapters (databases, external services)
-6. Tests
-
-**For frontend projects:**
-1. Routing (pages, routes)
-2. Container/smart components (state management)
-3. Presentational components (UI building blocks)
-4. Models/types (data shapes)
-5. Services (API clients, state stores)
-6. Tests
-
-**For fullstack/mixed projects:**
-1. Backend changes first (APIs shape frontend)
-2. Then frontend changes
 
 `)
 
