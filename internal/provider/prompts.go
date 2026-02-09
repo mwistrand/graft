@@ -14,9 +14,9 @@ func BuildSummaryPrompt(req *SummarizeRequest) string {
 
 `)
 
-	// Add commits section
+	// Add commits section (user-controlled content in XML boundaries)
 	if len(req.Commits) > 0 {
-		b.WriteString("## Commits\n")
+		b.WriteString("<commits>\n")
 		for _, c := range req.Commits {
 			b.WriteString(fmt.Sprintf("### %s by %s\n", c.ShortHash, c.Author))
 			b.WriteString(c.Subject + "\n")
@@ -25,10 +25,11 @@ func BuildSummaryPrompt(req *SummarizeRequest) string {
 			}
 			b.WriteString("\n")
 		}
+		b.WriteString("</commits>\n\n")
 	}
 
 	// Add changed files section
-	b.WriteString("## Changed Files\n")
+	b.WriteString("<changed_files>\n")
 	for _, f := range req.Files {
 		status := f.Status
 		if f.OldPath != "" {
@@ -36,7 +37,7 @@ func BuildSummaryPrompt(req *SummarizeRequest) string {
 		}
 		b.WriteString(fmt.Sprintf("- %s (%s: +%d/-%d)\n", f.Path, status, f.Additions, f.Deletions))
 	}
-	b.WriteString("\n")
+	b.WriteString("</changed_files>\n\n")
 
 	// Add diff content if available (truncated for large diffs)
 	if req.FullDiff != "" {
@@ -45,9 +46,9 @@ func BuildSummaryPrompt(req *SummarizeRequest) string {
 		if len(diff) > maxDiffLen {
 			diff = diff[:maxDiffLen] + "\n\n... [diff truncated for length] ..."
 		}
-		b.WriteString("## Diff Content\n```diff\n")
+		b.WriteString("<diff>\n")
 		b.WriteString(diff)
-		b.WriteString("\n```\n\n")
+		b.WriteString("\n</diff>\n\n")
 	}
 
 	// Add focus instruction if specified
@@ -200,7 +201,7 @@ AuthConfig.java
 		b.WriteString("\n")
 	}
 
-	b.WriteString("## Changed Files\n")
+	b.WriteString("<changed_files>\n")
 	for _, f := range req.Files {
 		status := f.Status
 		if f.OldPath != "" {
@@ -208,12 +209,14 @@ AuthConfig.java
 		}
 		b.WriteString(fmt.Sprintf("- %s (%s: +%d/-%d)\n", f.Path, status, f.Additions, f.Deletions))
 	}
+	b.WriteString("</changed_files>\n")
 
 	if len(req.Commits) > 0 {
-		b.WriteString("\n## Brief Context from Commits\n")
+		b.WriteString("\n<commits>\n")
 		for _, c := range req.Commits {
 			b.WriteString(fmt.Sprintf("- %s\n", c.Subject))
 		}
+		b.WriteString("</commits>\n")
 	}
 
 	b.WriteString(`
@@ -455,7 +458,10 @@ func ExtractJSON(text string) string {
 	// Look for raw JSON (starts with { or [)
 	for i := 0; i < len(text); i++ {
 		if text[i] == '{' || text[i] == '[' {
-			return strings.TrimSpace(text[i:])
+			candidate := strings.TrimSpace(text[i:])
+			if json.Valid([]byte(candidate)) {
+				return candidate
+			}
 		}
 	}
 
@@ -471,9 +477,9 @@ func BuildReviewPrompt(req *ReviewRequest) string {
 
 `)
 
-	// Add commits section
+	// Add commits section (user-controlled content in XML boundaries)
 	if len(req.Commits) > 0 {
-		b.WriteString("## Commits\n")
+		b.WriteString("<commits>\n")
 		for _, c := range req.Commits {
 			b.WriteString(fmt.Sprintf("### %s by %s\n", c.ShortHash, c.Author))
 			b.WriteString(c.Subject + "\n")
@@ -482,10 +488,11 @@ func BuildReviewPrompt(req *ReviewRequest) string {
 			}
 			b.WriteString("\n")
 		}
+		b.WriteString("</commits>\n\n")
 	}
 
 	// Add changed files section
-	b.WriteString("## Changed Files\n")
+	b.WriteString("<changed_files>\n")
 	for _, f := range req.Files {
 		status := f.Status
 		if f.OldPath != "" {
@@ -493,7 +500,7 @@ func BuildReviewPrompt(req *ReviewRequest) string {
 		}
 		b.WriteString(fmt.Sprintf("- %s (%s: +%d/-%d)\n", f.Path, status, f.Additions, f.Deletions))
 	}
-	b.WriteString("\n")
+	b.WriteString("</changed_files>\n\n")
 
 	// Add diff content
 	if req.FullDiff != "" {
@@ -502,9 +509,9 @@ func BuildReviewPrompt(req *ReviewRequest) string {
 		if len(diff) > maxDiffLen {
 			diff = diff[:maxDiffLen] + "\n\n... [diff truncated for length] ..."
 		}
-		b.WriteString("## Diff Content\n```diff\n")
+		b.WriteString("<diff>\n")
 		b.WriteString(diff)
-		b.WriteString("\n```\n\n")
+		b.WriteString("\n</diff>\n\n")
 	}
 
 	b.WriteString(`---
@@ -573,17 +580,17 @@ IMPORTANT: This is NOT a detailed review. Focus ONLY on:
 
 `)
 
-	// Add commits section (brief)
+	// Add commits section (user-controlled content in XML boundaries)
 	if len(req.Commits) > 0 {
-		b.WriteString("## Commits\n")
+		b.WriteString("<commits>\n")
 		for _, c := range req.Commits {
 			b.WriteString(fmt.Sprintf("- %s: %s\n", c.ShortHash, c.Subject))
 		}
-		b.WriteString("\n")
+		b.WriteString("</commits>\n\n")
 	}
 
 	// Add changed files section
-	b.WriteString("## Changed Files\n")
+	b.WriteString("<changed_files>\n")
 	totalAdditions := 0
 	totalDeletions := 0
 	for _, f := range req.Files {
@@ -595,7 +602,8 @@ IMPORTANT: This is NOT a detailed review. Focus ONLY on:
 		totalAdditions += f.Additions
 		totalDeletions += f.Deletions
 	}
-	b.WriteString(fmt.Sprintf("\nTotal: %d files, +%d/-%d lines\n\n", len(req.Files), totalAdditions, totalDeletions))
+	b.WriteString(fmt.Sprintf("\nTotal: %d files, +%d/-%d lines\n", len(req.Files), totalAdditions, totalDeletions))
+	b.WriteString("</changed_files>\n\n")
 
 	b.WriteString(`---
 

@@ -48,7 +48,8 @@ func (c *Cache) Load() (*Analysis, error) {
 
 	var analysis Analysis
 	if err := json.Unmarshal(data, &analysis); err != nil {
-		// Invalid cache, treat as missing
+		// Invalid cache, treat as miss
+		fmt.Fprintf(os.Stderr, "Warning: corrupted analysis cache: %v\n", err)
 		return nil, nil
 	}
 
@@ -60,7 +61,7 @@ func (c *Cache) Load() (*Analysis, error) {
 func (c *Cache) Save(analysis *Analysis) error {
 	// Ensure cache directory exists
 	cacheDir := c.CacheDirectory()
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
 		return fmt.Errorf("creating cache directory: %w", err)
 	}
 
@@ -69,7 +70,7 @@ func (c *Cache) Save(analysis *Analysis) error {
 		return fmt.Errorf("marshaling analysis: %w", err)
 	}
 
-	if err := os.WriteFile(c.CachePath(), data, 0644); err != nil {
+	if err := os.WriteFile(c.CachePath(), data, 0600); err != nil {
 		return fmt.Errorf("writing cache: %w", err)
 	}
 

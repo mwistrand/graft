@@ -31,7 +31,11 @@ The codebase follows a clean layered architecture:
 ```
 cmd/graft/           → Entry point
 internal/
-  cli/               → Cobra commands (review.go is the main command)
+  cli/               → Cobra commands
+    review.go        → Review command flags and entry point
+    review_runner.go → reviewRunner workflow orchestration
+    review_helpers.go→ Provider init, file ordering, repo analysis helpers
+    review_output.go → AI review and quick review output formatting
   config/            → Config loading from ~/.config/graft/config.json
   git/               → Git operations (shells out to git binary)
   analysis/          → Repository structure analysis for smarter ordering
@@ -96,7 +100,7 @@ cacheKey := provider.GenerateCacheKey(baseRef, commits)
 
 1. Create `internal/provider/newprovider/newprovider.go`
 2. Implement the `Provider` interface
-3. Add case in `cli/review.go:initProvider()`
+3. Add case in `cli/review_helpers.go:initProvider()`
 4. Add config keys in `config/config.go`
 
 ## Configuration

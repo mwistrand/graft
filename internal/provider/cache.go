@@ -101,7 +101,8 @@ func (c *ReviewCache) Load(cacheKey string) (*CachedReview, error) {
 
 	var cached CachedReview
 	if err := json.Unmarshal(data, &cached); err != nil {
-		// Invalid cache, treat as missing
+		// Invalid cache, treat as miss
+		fmt.Fprintf(os.Stderr, "Warning: corrupted review cache %s: %v\n", cacheKey, err)
 		return nil, nil
 	}
 
@@ -112,7 +113,7 @@ func (c *ReviewCache) Load(cacheKey string) (*CachedReview, error) {
 func (c *ReviewCache) Save(cached *CachedReview) error {
 	// Ensure cache directory exists
 	cacheDir := c.CacheDirectory()
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
 		return fmt.Errorf("creating review cache directory: %w", err)
 	}
 
@@ -121,7 +122,7 @@ func (c *ReviewCache) Save(cached *CachedReview) error {
 		return fmt.Errorf("marshaling review cache: %w", err)
 	}
 
-	if err := os.WriteFile(c.CachePath(cached.CacheKey), data, 0644); err != nil {
+	if err := os.WriteFile(c.CachePath(cached.CacheKey), data, 0600); err != nil {
 		return fmt.Errorf("writing review cache: %w", err)
 	}
 

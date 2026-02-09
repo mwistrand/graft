@@ -88,7 +88,14 @@ func ConfirmContinue(message string, timeout time.Duration) ConfirmContinueResul
 		fmt.Printf("\n%s [Y/n] ", message)
 	}
 
-	// Read input in a goroutine to allow timeout
+	// Read input in a goroutine to allow timeout.
+	//
+	// Note: if the timeout fires, this goroutine will remain blocked on
+	// ReadString until the process exits. This is an intentional trade-off:
+	// os.Stdin reads cannot be cancelled via context, and the alternatives
+	// (SetReadDeadline on a dup'd fd, or closing stdin) introduce platform-
+	// specific complexity for no practical benefit — the process exits
+	// shortly after a timeout.
 	type readResult struct {
 		input string
 		err   error

@@ -190,6 +190,7 @@ func (m *ProxyManager) Stop() {
 	case <-done:
 	case <-time.After(3 * time.Second):
 		cmd.Process.Kill()
+		<-done // Reap the process to prevent zombies
 	}
 
 	m.mu.Lock()

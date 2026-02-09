@@ -60,6 +60,7 @@ func (r *deltaRenderer) RenderFileDiff(ctx context.Context, repoDir, baseRef, fi
 	}
 
 	if err := gitCmd.Run(); err != nil {
+		pipe.Close()
 		deltaCmd.Wait()
 		return err
 	}
@@ -88,6 +89,7 @@ func (r *deltaRenderer) RenderFullDiff(ctx context.Context, repoDir, baseRef str
 	}
 
 	if err := gitCmd.Run(); err != nil {
+		pipe.Close()
 		deltaCmd.Wait()
 		return err
 	}
