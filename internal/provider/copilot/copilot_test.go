@@ -502,6 +502,57 @@ func TestReviewChanges_WithSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestEffectiveModel(t *testing.T) {
+	p, _ := New("", "default-model")
+
+	// Empty request model returns provider default
+	got := p.effectiveModel("")
+	if got != "default-model" {
+		t.Errorf("effectiveModel(\"\") = %q, want %q", got, "default-model")
+	}
+
+	// Non-empty request model overrides provider default
+	got = p.effectiveModel("override-model")
+	if got != "override-model" {
+		t.Errorf("effectiveModel(\"override-model\") = %q, want %q", got, "override-model")
+	}
+}
+
+func TestSummarizeChanges_ModelPassthrough(t *testing.T) {
+	var receivedModel string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		receivedModel = req.Model
+
+		resp := chatResponse{
+			Choices: []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}{
+				{Message: struct {
+					Content string `json:"content"`
+				}{Content: `{"overview": "Test", "key_changes": []}`}},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	p, _ := New(server.URL, "default-model")
+	_, err := p.SummarizeChanges(context.Background(), &provider.SummarizeRequest{
+		Model: "per-request-model",
+		Files: []git.FileDiff{{Path: "test.go"}},
+	})
+	if err != nil {
+		t.Fatalf("SummarizeChanges() failed: %v", err)
+	}
+	if receivedModel != "per-request-model" {
+		t.Errorf("request model = %q, want %q", receivedModel, "per-request-model")
+	}
+}
+
 func TestReviewChanges_WithMaxTokens(t *testing.T) {
 	var receivedMaxTokens int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

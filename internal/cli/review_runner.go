@@ -41,6 +41,8 @@ type reviewRunner struct {
 	promptTimeoutMin int
 	providerName     string
 	modelName        string
+	reviewModelName  string
+	orderModelName   string
 	selectModel      bool
 	skipSummary      bool
 	skipOrdering     bool
@@ -75,6 +77,8 @@ func newReviewRunner(cfg *config.Config, baseRef string) *reviewRunner {
 		promptTimeoutMin: resolveTimeout(promptTimeout, cfg.PromptTimeout),
 		providerName:     providerName,
 		modelName:        modelName,
+		reviewModelName:  firstNonEmpty(reviewModelName, cfg.ReviewModel),
+		orderModelName:   firstNonEmpty(orderModelName, cfg.OrderModel),
 		selectModel:      selectModel,
 		skipSummary:      skipSummary,
 		skipOrdering:     skipOrdering,
@@ -83,12 +87,14 @@ func newReviewRunner(cfg *config.Config, baseRef string) *reviewRunner {
 	}
 }
 
-// firstNonEmpty returns a if non-empty, otherwise b.
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
+// firstNonEmpty returns the first non-empty string, or empty if all are empty.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
 	}
-	return b
+	return ""
 }
 
 // resolveTimeout returns flag if explicitly set (>= 0), otherwise configVal.
@@ -99,8 +105,45 @@ func resolveTimeout(flag, configVal int) int {
 	return configVal
 }
 
+// validateModels checks that task-specific model configuration is complete.
+// If a task-specific model is set but no default or counterpart model covers the other task,
+// returns an error. Skip flags (--no-order, --no-summary) are taken into account.
+func (r *reviewRunner) validateModels() error {
+	hasDefault := r.modelName != "" || r.cfg.Model != ""
+	hasReview := r.reviewModelName != ""
+	hasOrder := r.orderModelName != ""
+
+	// When ordering is skipped, no order model is needed
+	needsOrder := !r.skipOrdering
+	// When summary, AI review, and quick review are all disabled, no review model is needed
+	needsReview := !r.skipSummary || r.aiReviewFlag != "" || r.doQuickReview
+
+	if hasReview && !hasDefault && !hasOrder && needsOrder {
+		return fmt.Errorf("--review-model requires either --model (default) or --order-model to be set")
+	}
+	if hasOrder && !hasDefault && !hasReview && needsReview {
+		return fmt.Errorf("--order-model requires either --model (default) or --review-model to be set")
+	}
+	return nil
+}
+
+// resolveReviewModel returns the model to use for review tasks (summarize, review, quick review).
+// Returns empty to use provider default.
+func (r *reviewRunner) resolveReviewModel() string {
+	return r.reviewModelName
+}
+
+// resolveOrderModel returns the model to use for ordering tasks.
+// Returns empty to use provider default.
+func (r *reviewRunner) resolveOrderModel() string {
+	return r.orderModelName
+}
+
 // run executes the full review workflow.
 func (r *reviewRunner) run(ctx context.Context) error {
+	if err := r.validateModels(); err != nil {
+		return err
+	}
 	if err := r.openRepo(ctx); err != nil {
 		return err
 	}
@@ -250,8 +293,13 @@ func (r *reviewRunner) initAIProvider(ctx context.Context) error {
 		return nil
 	}
 
+	// When both task-specific models are set, any one can initialize the provider
+	// since per-request overrides will select the correct model for each call.
+	allTasksCovered := r.resolveReviewModel() != "" && r.resolveOrderModel() != ""
+	effectiveModel := firstNonEmpty(r.modelName, r.resolveReviewModel(), r.resolveOrderModel())
+
 	Verbose("Initializing AI provider...")
-	p, cleanup, err := initProvider(ctx, r.cfg, r.providerName, r.modelName, r.selectModel)
+	p, cleanup, err := initProvider(ctx, r.cfg, r.providerName, effectiveModel, r.selectModel, allTasksCovered)
 	if err != nil {
 		return fmt.Errorf("AI provider initialization failed: %w", err)
 	}
@@ -271,6 +319,7 @@ func (r *reviewRunner) runQuickReview(ctx context.Context) (done bool, err error
 	fmt.Println("Performing quick assessment...")
 
 	quickResp, err := r.aiProvider.QuickReview(ctx, &provider.QuickReviewRequest{
+		Model:   r.resolveReviewModel(),
 		Files:   r.diffResult.Files,
 		Commits: r.diffResult.Commits,
 	})
@@ -378,6 +427,7 @@ func (r *reviewRunner) startOrdering(ctx context.Context, cached *provider.Cache
 	go func() {
 		Verbose("Determining file review order...")
 		files, err := r.aiProvider.OrderFiles(ctx, &provider.OrderRequest{
+			Model:       r.resolveOrderModel(),
 			Files:       r.diffResult.Files,
 			Commits:     r.diffResult.Commits,
 			RepoContext: r.repoCtx,
@@ -410,6 +460,7 @@ func (r *reviewRunner) generateSummary(ctx context.Context, cached *provider.Cac
 	fmt.Println("Analyzing changes...")
 
 	summary, err := r.aiProvider.SummarizeChanges(ctx, &provider.SummarizeRequest{
+		Model:    r.resolveReviewModel(),
 		Files:    r.diffResult.Files,
 		Commits:  r.diffResult.Commits,
 		FullDiff: fullDiff,
@@ -467,6 +518,7 @@ func (r *reviewRunner) generateReview(ctx context.Context, cached *provider.Cach
 	reviewOpts.Categories = provider.ParseReviewCategories(r.reviewCategories)
 
 	resp, err := r.aiProvider.ReviewChanges(ctx, &provider.ReviewRequest{
+		Model:        r.resolveReviewModel(),
 		Files:        r.diffResult.Files,
 		Commits:      r.diffResult.Commits,
 		FullDiff:     fullDiff,

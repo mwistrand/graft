@@ -73,6 +73,15 @@ func (p *Provider) Name() string {
 	return "copilot"
 }
 
+// effectiveModel returns the model to use for a request.
+// Per-request model overrides the provider default.
+func (p *Provider) effectiveModel(reqModel string) string {
+	if reqModel != "" {
+		return reqModel
+	}
+	return p.model
+}
+
 // SetModel updates the model used by this provider.
 func (p *Provider) SetModel(model string) {
 	p.model = model
@@ -117,7 +126,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 		maxTokens = 2048
 	}
 
-	text, err := p.chat(ctx, prompt, "", maxTokens)
+	text, err := p.chat(ctx, p.effectiveModel(req.Model), prompt, "", maxTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +143,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (*provider.OrderResponse, error) {
 	prompt := provider.BuildOrderPrompt(req)
 
-	text, err := p.chat(ctx, prompt, "", 2048)
+	text, err := p.chat(ctx, p.effectiveModel(req.Model), prompt, "", 2048)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +165,7 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 		maxTokens = 8192
 	}
 
-	text, err := p.chat(ctx, prompt, req.SystemPrompt, maxTokens)
+	text, err := p.chat(ctx, p.effectiveModel(req.Model), prompt, req.SystemPrompt, maxTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +178,7 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 func (p *Provider) QuickReview(ctx context.Context, req *provider.QuickReviewRequest) (*provider.QuickReviewResponse, error) {
 	prompt := provider.BuildQuickReviewPrompt(req)
 
-	text, err := p.chat(ctx, prompt, "", 1024)
+	text, err := p.chat(ctx, p.effectiveModel(req.Model), prompt, "", 1024)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +188,7 @@ func (p *Provider) QuickReview(ctx context.Context, req *provider.QuickReviewReq
 
 // chat sends a message to the copilot-api proxy and returns the response text.
 // If systemPrompt is non-empty, it's included as a system message.
-func (p *Provider) chat(ctx context.Context, prompt string, systemPrompt string, maxTokens int) (string, error) {
+func (p *Provider) chat(ctx context.Context, model string, prompt string, systemPrompt string, maxTokens int) (string, error) {
 	messages := []chatMessage{}
 	if systemPrompt != "" {
 		messages = append(messages, chatMessage{Role: "system", Content: systemPrompt})
@@ -187,7 +196,7 @@ func (p *Provider) chat(ctx context.Context, prompt string, systemPrompt string,
 	messages = append(messages, chatMessage{Role: "user", Content: prompt})
 
 	reqBody := chatRequest{
-		Model:     p.model,
+		Model:     model,
 		Messages:  messages,
 		MaxTokens: maxTokens,
 	}

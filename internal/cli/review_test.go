@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mwistrand/graft/internal/config"
 	"github.com/mwistrand/graft/internal/git"
 	"github.com/mwistrand/graft/internal/provider"
 )
@@ -669,5 +670,219 @@ func TestFilterMajorGroups_AllMinor(t *testing.T) {
 	}
 	if len(filtered) != 0 {
 		t.Errorf("expected 0 groups after filtering, got %d", len(filtered))
+	}
+}
+
+func TestValidateModels(t *testing.T) {
+	tests := []struct {
+		name            string
+		modelName       string
+		reviewModelName string
+		orderModelName  string
+		cfgModel        string
+		skipOrdering    bool
+		skipSummary     bool
+		aiReviewFlag    string
+		doQuickReview   bool
+		wantErr         bool
+	}{
+		{
+			name:    "no models set (interactive prompt will handle)",
+			wantErr: false,
+		},
+		{
+			name:      "only default model",
+			modelName: "gpt-4",
+			wantErr:   false,
+		},
+		{
+			name:            "review + default",
+			modelName:       "gpt-4",
+			reviewModelName: "gpt-4o",
+			wantErr:         false,
+		},
+		{
+			name:           "order + default",
+			modelName:      "gpt-4",
+			orderModelName: "gpt-3.5",
+			wantErr:        false,
+		},
+		{
+			name:            "review + order, no default",
+			reviewModelName: "gpt-4o",
+			orderModelName:  "gpt-3.5",
+			wantErr:         false,
+		},
+		{
+			name:            "review only, no default - error",
+			reviewModelName: "gpt-4o",
+			wantErr:         true,
+		},
+		{
+			name:           "order only, no default - error",
+			orderModelName: "gpt-3.5",
+			wantErr:        true,
+		},
+		{
+			name:            "review flag only, config default covers order",
+			reviewModelName: "gpt-4o",
+			cfgModel:        "gpt-4",
+			wantErr:         false,
+		},
+		{
+			name:           "order flag only, config default covers review",
+			orderModelName: "gpt-3.5",
+			cfgModel:       "gpt-4",
+			wantErr:        false,
+		},
+		{
+			name:            "review only with --no-order skips validation",
+			reviewModelName: "gpt-4o",
+			skipOrdering:    true,
+			wantErr:         false,
+		},
+		{
+			name:           "order only with --no-summary and no review tasks",
+			orderModelName: "gpt-3.5",
+			skipSummary:    true,
+			wantErr:        false,
+		},
+		{
+			name:           "order only with --no-summary but ai-review active - error",
+			orderModelName: "gpt-3.5",
+			skipSummary:    true,
+			aiReviewFlag:   "true",
+			wantErr:        true,
+		},
+		{
+			name:           "order only with --no-summary but quick review active - error",
+			orderModelName: "gpt-3.5",
+			skipSummary:    true,
+			doQuickReview:  true,
+			wantErr:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &reviewRunner{
+				cfg: &config.Config{
+					Model: tt.cfgModel,
+				},
+				modelName:       tt.modelName,
+				reviewModelName: tt.reviewModelName,
+				orderModelName:  tt.orderModelName,
+				skipOrdering:    tt.skipOrdering,
+				skipSummary:     tt.skipSummary,
+				aiReviewFlag:    tt.aiReviewFlag,
+				doQuickReview:   tt.doQuickReview,
+			}
+			err := r.validateModels()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateModels() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNewReviewRunner_ResolvesTaskModels(t *testing.T) {
+	// CLI flags take precedence over config
+	reviewModelName = "flag-review"
+	orderModelName = "flag-order"
+	defer func() {
+		reviewModelName = ""
+		orderModelName = ""
+	}()
+
+	cfg := &config.Config{
+		ReviewModel: "config-review",
+		OrderModel:  "config-order",
+	}
+	r := newReviewRunner(cfg, "main")
+	if r.reviewModelName != "flag-review" {
+		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "flag-review")
+	}
+	if r.orderModelName != "flag-order" {
+		t.Errorf("orderModelName = %q, want %q", r.orderModelName, "flag-order")
+	}
+}
+
+func TestNewReviewRunner_FallsBackToConfig(t *testing.T) {
+	// When no CLI flags, config values are used
+	reviewModelName = ""
+	orderModelName = ""
+
+	cfg := &config.Config{
+		ReviewModel: "config-review",
+		OrderModel:  "config-order",
+	}
+	r := newReviewRunner(cfg, "main")
+	if r.reviewModelName != "config-review" {
+		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "config-review")
+	}
+	if r.orderModelName != "config-order" {
+		t.Errorf("orderModelName = %q, want %q", r.orderModelName, "config-order")
+	}
+}
+
+func TestResolveReviewModel(t *testing.T) {
+	tests := []struct {
+		name            string
+		reviewModelName string
+		want            string
+	}{
+		{
+			name: "no review model set",
+			want: "",
+		},
+		{
+			name:            "review model set",
+			reviewModelName: "gpt-4o",
+			want:            "gpt-4o",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &reviewRunner{
+				cfg:             &config.Config{},
+				reviewModelName: tt.reviewModelName,
+			}
+			got := r.resolveReviewModel()
+			if got != tt.want {
+				t.Errorf("resolveReviewModel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveOrderModel(t *testing.T) {
+	tests := []struct {
+		name           string
+		orderModelName string
+		want           string
+	}{
+		{
+			name: "no order model set",
+			want: "",
+		},
+		{
+			name:           "order model set",
+			orderModelName: "gpt-3.5",
+			want:           "gpt-3.5",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &reviewRunner{
+				cfg:            &config.Config{},
+				orderModelName: tt.orderModelName,
+			}
+			got := r.resolveOrderModel()
+			if got != tt.want {
+				t.Errorf("resolveOrderModel() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

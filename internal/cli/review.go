@@ -13,6 +13,8 @@ var (
 	skipOrdering     bool
 	providerName     string
 	modelName        string
+	reviewModelName  string
+	orderModelName   string
 	selectModel      bool
 	noDelta          bool
 	testsFirst       bool
@@ -57,6 +59,8 @@ func init() {
 	reviewCmd.Flags().BoolVar(&skipOrdering, "no-order", false, "Skip AI ordering, use default order")
 	reviewCmd.Flags().StringVar(&providerName, "provider", "", "AI provider to use (default from config)")
 	reviewCmd.Flags().StringVar(&modelName, "model", "", "Model to use (default from config)")
+	reviewCmd.Flags().StringVar(&reviewModelName, "review-model", "", "Model for review tasks (summarize, review, quick review)")
+	reviewCmd.Flags().StringVar(&orderModelName, "order-model", "", "Model for file ordering")
 	reviewCmd.Flags().BoolVar(&selectModel, "select-model", false, "Force interactive model selection")
 	reviewCmd.Flags().BoolVar(&noDelta, "no-delta", false, "Disable Delta rendering")
 	reviewCmd.Flags().BoolVar(&testsFirst, "tests-first", false, "Show test files before implementation")

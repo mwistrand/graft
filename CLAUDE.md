@@ -109,7 +109,9 @@ Config file: `~/.config/graft/config.json`
 
 ### Provider Settings
 - `provider`: "claude" or "copilot"
-- `model`: Model to use (if not set, interactive prompt appears)
+- `model`: Default model to use (if not set, interactive prompt appears)
+- `review-model`: Model for review tasks (summarize, review, quick review)
+- `order-model`: Model for file ordering
 - `anthropic-api-key`: For Claude provider
 - `openai-api-key`: For OpenAI provider
 - `copilot-base-url`: For Copilot proxy (default: http://localhost:4141)
@@ -138,10 +140,20 @@ There is no default model. If no model is configured:
 - Use `--model <name>` to specify directly
 - Use `--select-model` to force the prompt even when a model is configured
 
+Per-task model overrides allow using different models for different operations:
+- `--review-model <name>`: Model for summarize, review, and quick review tasks
+- `--order-model <name>`: Model for file ordering
+
+When using task-specific models, either `--model` or both task-specific models must be set so all tasks are covered. Skip flags (`--no-order`, `--no-summary`) reduce what's required.
+
 ```bash
-graft review main                    # Prompts for model if not configured
-graft review main --model gpt-4o     # Use specific model
-graft review main --select-model     # Force model selection prompt
+graft review main                                          # Prompts for model if not configured
+graft review main --model gpt-4o                           # Use specific model for all tasks
+graft review main --select-model                           # Force model selection prompt
+graft review main --review-model gpt-4o --order-model gpt-3.5  # Different models per task
+graft review main --model gpt-4 --review-model gpt-4o     # Override just review tasks
+graft config set review-model gpt-4o                       # Persist review model
+graft config set order-model gpt-3.5                       # Persist order model
 ```
 
 ### Environment Variables
@@ -152,6 +164,8 @@ All config options can be overridden via environment variables:
 |------------|---------------------|
 | `provider` | `GRAFT_PROVIDER` |
 | `model` | `GRAFT_MODEL` |
+| `review-model` | `GRAFT_REVIEW_MODEL` |
+| `order-model` | `GRAFT_ORDER_MODEL` |
 | `anthropic-api-key` | `ANTHROPIC_API_KEY` |
 | `openai-api-key` | `OPENAI_API_KEY` |
 | `copilot-base-url` | `COPILOT_BASE_URL` |

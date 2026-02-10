@@ -304,12 +304,12 @@ func describeDirectory(dir string) string {
 		"config":      "Configuration",
 
 		// Shared
-		"types":   "Type definitions",
-		"tests":   "Test files",
-		"test":    "Test files",
+		"types":     "Type definitions",
+		"tests":     "Test files",
+		"test":      "Test files",
 		"__tests__": "Test files",
-		"docs":    "Documentation",
-		"scripts": "Build/utility scripts",
+		"docs":      "Documentation",
+		"scripts":   "Build/utility scripts",
 	}
 
 	if desc, ok := descriptions[base]; ok {

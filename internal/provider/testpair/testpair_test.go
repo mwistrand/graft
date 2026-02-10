@@ -51,8 +51,8 @@ func TestIsTestFile(t *testing.T) {
 		{"foo.rs", false},
 
 		// Edge cases
-		{"test.go", false},        // not _test.go
-		{"testing.go", false},     // not a test file
+		{"test.go", false},           // not _test.go
+		{"testing.go", false},        // not a test file
 		{"my_test_helper.go", false}, // not a test file (different pattern)
 	}
 

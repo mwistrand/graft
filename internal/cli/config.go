@@ -14,7 +14,9 @@ var configCmd = &cobra.Command{
 
 Available keys:
   provider          AI provider to use (claude, copilot)
-  model             Model name for the selected provider
+  model             Default model for the selected provider
+  review-model      Model for review tasks (summarize, review, quick review)
+  order-model       Model for file ordering
   anthropic-api-key API key for Claude/Anthropic
   openai-api-key    API key for OpenAI
   copilot-base-url  URL of copilot-api proxy (default: http://localhost:4141)
@@ -100,7 +102,7 @@ func showConfig() {
 	fmt.Println("Current configuration:")
 	fmt.Println()
 
-	keys := []string{"provider", "model", "anthropic-api-key", "openai-api-key", "copilot-base-url", "delta-path"}
+	keys := []string{"provider", "model", "review-model", "order-model", "anthropic-api-key", "openai-api-key", "copilot-base-url", "delta-path"}
 	for _, key := range keys {
 		value, _ := cfg.Get(key)
 		if value == "" {

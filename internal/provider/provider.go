@@ -32,6 +32,10 @@ type Provider interface {
 
 // SummarizeRequest contains the diff context for summarization.
 type SummarizeRequest struct {
+	// Model overrides the provider's default model for this request.
+	// If empty, the provider's configured model is used.
+	Model string
+
 	// Files contains the changed files with their metadata.
 	Files []git.FileDiff
 
@@ -86,6 +90,10 @@ type FileGroup struct {
 
 // OrderRequest contains files to be ordered for review.
 type OrderRequest struct {
+	// Model overrides the provider's default model for this request.
+	// If empty, the provider's configured model is used.
+	Model string
+
 	// Files contains the changed files with their metadata.
 	Files []git.FileDiff
 
@@ -257,6 +265,10 @@ func DefaultSummarizeOptions() SummarizeOptions {
 
 // ReviewRequest contains the context for a detailed code review.
 type ReviewRequest struct {
+	// Model overrides the provider's default model for this request.
+	// If empty, the provider's configured model is used.
+	Model string
+
 	// Files contains the changed files with their metadata.
 	Files []git.FileDiff
 
@@ -469,6 +481,10 @@ func DefaultReviewOptions() ReviewOptions {
 
 // QuickReviewRequest contains the context for a fast initial assessment.
 type QuickReviewRequest struct {
+	// Model overrides the provider's default model for this request.
+	// If empty, the provider's configured model is used.
+	Model string
+
 	// Files contains the changed files with their metadata.
 	Files []git.FileDiff
 
@@ -503,4 +519,3 @@ type QuickReviewResponse struct {
 	// True for "approve" and "concerns", false for "blocker".
 	Proceed bool `json:"proceed"`
 }
-

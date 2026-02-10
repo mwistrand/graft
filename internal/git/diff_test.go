@@ -146,9 +146,9 @@ func helper() {
 
 func TestParseNumstat(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		want   map[string][2]int
+		name  string
+		input string
+		want  map[string][2]int
 	}{
 		{
 			name:  "simple",
@@ -290,7 +290,7 @@ func TestGetFileDiff(t *testing.T) {
 func containsString(haystack, needle string) bool {
 	return len(haystack) > 0 && len(needle) > 0 &&
 		(haystack == needle || len(haystack) >= len(needle) &&
-		findSubstring(haystack, needle))
+			findSubstring(haystack, needle))
 }
 
 func findSubstring(s, substr string) bool {

@@ -55,6 +55,15 @@ func (p *Provider) Model() string {
 	return string(p.model)
 }
 
+// effectiveModel returns the model to use for a request.
+// Per-request model overrides the provider default.
+func (p *Provider) effectiveModel(reqModel string) anthropic.Model {
+	if reqModel != "" {
+		return anthropic.Model(reqModel)
+	}
+	return p.model
+}
+
 // Name returns "claude".
 func (p *Provider) Name() string {
 	return "claude"
@@ -70,7 +79,7 @@ func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.Summarize
 	}
 
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     p.model,
+		Model:     p.effectiveModel(req.Model),
 		MaxTokens: int64(maxTokens),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
@@ -100,7 +109,7 @@ func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (
 	prompt := provider.BuildOrderPrompt(req)
 
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     p.model,
+		Model:     p.effectiveModel(req.Model),
 		MaxTokens: int64(2048),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
@@ -133,7 +142,7 @@ func (p *Provider) ReviewChanges(ctx context.Context, req *provider.ReviewReques
 	}
 
 	params := anthropic.MessageNewParams{
-		Model:     p.model,
+		Model:     p.effectiveModel(req.Model),
 		MaxTokens: int64(maxTokens),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
@@ -166,7 +175,7 @@ func (p *Provider) QuickReview(ctx context.Context, req *provider.QuickReviewReq
 	prompt := provider.BuildQuickReviewPrompt(req)
 
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     p.model,
+		Model:     p.effectiveModel(req.Model),
 		MaxTokens: int64(1024),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),

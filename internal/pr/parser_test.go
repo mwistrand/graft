@@ -279,8 +279,8 @@ func TestParse_NotPRURL(t *testing.T) {
 		"abc123def",
 		"",
 		"https://google.com",
-		"https://github.com/owner/repo",           // no PR path
-		"https://github.com/owner/repo/issues/1",  // issues, not PR
+		"https://github.com/owner/repo",          // no PR path
+		"https://github.com/owner/repo/issues/1", // issues, not PR
 		"https://github.com/owner/repo/commits/x", // commits, not PR
 	}
 
@@ -297,16 +297,16 @@ func TestParse_NotPRURL(t *testing.T) {
 func TestParse_EnterpriseNonPRPaths(t *testing.T) {
 	// Enterprise hosts with non-PR paths should return ErrNotPRURL
 	notPRURLs := []string{
-		"https://github.mycompany.com/owner/repo",              // no PR path
-		"https://github.mycompany.com/owner/repo/issues/123",   // issues, not PR
-		"https://github.mycompany.com/owner/repo/commits/abc",  // commits, not PR
-		"https://github.mycompany.com/owner/repo/tree/main",    // tree view
-		"https://github.mycompany.com/owner/repo/blob/main/f",  // blob view
-		"https://gitlab.mycompany.com/owner/repo/issues/123",   // GitLab issues
-		"https://gitlab.mycompany.com/owner/repo/commits/abc",  // GitLab commits
-		"https://gitlab.mycompany.com/owner/repo/pipelines/1",  // GitLab pipelines
-		"https://bitbucket.mycompany.com/owner/repo/commits",   // BitBucket commits
-		"https://bitbucket.mycompany.com/owner/repo/branches",  // BitBucket branches
+		"https://github.mycompany.com/owner/repo",             // no PR path
+		"https://github.mycompany.com/owner/repo/issues/123",  // issues, not PR
+		"https://github.mycompany.com/owner/repo/commits/abc", // commits, not PR
+		"https://github.mycompany.com/owner/repo/tree/main",   // tree view
+		"https://github.mycompany.com/owner/repo/blob/main/f", // blob view
+		"https://gitlab.mycompany.com/owner/repo/issues/123",  // GitLab issues
+		"https://gitlab.mycompany.com/owner/repo/commits/abc", // GitLab commits
+		"https://gitlab.mycompany.com/owner/repo/pipelines/1", // GitLab pipelines
+		"https://bitbucket.mycompany.com/owner/repo/commits",  // BitBucket commits
+		"https://bitbucket.mycompany.com/owner/repo/branches", // BitBucket branches
 	}
 
 	for _, url := range notPRURLs {

@@ -26,6 +26,8 @@ func TestConfigSetGet(t *testing.T) {
 	}{
 		{"provider", "openai"},
 		{"model", "gpt-4"},
+		{"review-model", "gpt-4o"},
+		{"order-model", "gpt-3.5"},
 		{"anthropic-api-key", "sk-ant-test123"},
 		{"openai-api-key", "sk-test456"},
 		{"copilot-base-url", "http://localhost:5000"},
@@ -153,7 +155,8 @@ func TestConfigValidate(t *testing.T) {
 func TestConfigEnvOverrides(t *testing.T) {
 	// Save and restore environment
 	envVars := []string{
-		"GRAFT_PROVIDER", "GRAFT_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+		"GRAFT_PROVIDER", "GRAFT_MODEL", "GRAFT_REVIEW_MODEL", "GRAFT_ORDER_MODEL",
+		"ANTHROPIC_API_KEY", "OPENAI_API_KEY",
 		"COPILOT_BASE_URL", "GRAFT_DELTA_PATH", "GRAFT_PROMPT_TIMEOUT", "GRAFT_TESTS_FIRST",
 		"GRAFT_INLINE_TESTS", "GRAFT_NO_DELTA", "GRAFT_NO_ANALYZE", "GRAFT_MAJOR_ONLY",
 		"GRAFT_REVIEW_CATEGORIES", "GRAFT_REVIEW_SEVERITY",
@@ -175,6 +178,8 @@ func TestConfigEnvOverrides(t *testing.T) {
 	// Set test environment
 	os.Setenv("GRAFT_PROVIDER", "openai")
 	os.Setenv("GRAFT_MODEL", "gpt-4-turbo")
+	os.Setenv("GRAFT_REVIEW_MODEL", "gpt-4o")
+	os.Setenv("GRAFT_ORDER_MODEL", "gpt-3.5-turbo")
 	os.Setenv("ANTHROPIC_API_KEY", "env-anthropic-key")
 	os.Setenv("OPENAI_API_KEY", "env-openai-key")
 	os.Setenv("COPILOT_BASE_URL", "http://localhost:5000")
@@ -196,6 +201,12 @@ func TestConfigEnvOverrides(t *testing.T) {
 	}
 	if cfg.Model != "gpt-4-turbo" {
 		t.Errorf("Model = %q, want %q", cfg.Model, "gpt-4-turbo")
+	}
+	if cfg.ReviewModel != "gpt-4o" {
+		t.Errorf("ReviewModel = %q, want %q", cfg.ReviewModel, "gpt-4o")
+	}
+	if cfg.OrderModel != "gpt-3.5-turbo" {
+		t.Errorf("OrderModel = %q, want %q", cfg.OrderModel, "gpt-3.5-turbo")
 	}
 	if cfg.AnthropicAPIKey != "env-anthropic-key" {
 		t.Errorf("AnthropicAPIKey = %q, want %q", cfg.AnthropicAPIKey, "env-anthropic-key")
@@ -253,6 +264,8 @@ func TestConfigSaveLoad(t *testing.T) {
 	cfg := &Config{
 		Provider:        "claude",
 		Model:           "claude-opus-4-20250514",
+		ReviewModel:     "claude-haiku-3-5-20241022",
+		OrderModel:      "claude-sonnet-4-20250514",
 		AnthropicAPIKey: "test-api-key",
 		DeltaPath:       "/usr/bin/delta",
 	}
@@ -278,6 +291,12 @@ func TestConfigSaveLoad(t *testing.T) {
 	}
 	if loaded.Model != cfg.Model {
 		t.Errorf("Model = %q, want %q", loaded.Model, cfg.Model)
+	}
+	if loaded.ReviewModel != cfg.ReviewModel {
+		t.Errorf("ReviewModel = %q, want %q", loaded.ReviewModel, cfg.ReviewModel)
+	}
+	if loaded.OrderModel != cfg.OrderModel {
+		t.Errorf("OrderModel = %q, want %q", loaded.OrderModel, cfg.OrderModel)
 	}
 	if loaded.AnthropicAPIKey != cfg.AnthropicAPIKey {
 		t.Errorf("AnthropicAPIKey = %q, want %q", loaded.AnthropicAPIKey, cfg.AnthropicAPIKey)

@@ -15,8 +15,16 @@ type Config struct {
 	// Provider specifies which AI provider to use (e.g., "claude", "copilot").
 	Provider string `json:"provider,omitempty"`
 
-	// Model specifies the model to use with the selected provider.
+	// Model specifies the default model to use with the selected provider.
 	Model string `json:"model,omitempty"`
+
+	// ReviewModel specifies the model to use for review tasks (summarize, review, quick review).
+	// Falls back to Model if empty.
+	ReviewModel string `json:"review_model,omitempty"`
+
+	// OrderModel specifies the model to use for file ordering tasks.
+	// Falls back to Model if empty.
+	OrderModel string `json:"order_model,omitempty"`
 
 	// AnthropicAPIKey is the API key for the Anthropic/Claude provider.
 	AnthropicAPIKey string `json:"anthropic_api_key,omitempty"`
@@ -149,6 +157,12 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("GRAFT_MODEL"); v != "" {
 		c.Model = v
 	}
+	if v := os.Getenv("GRAFT_REVIEW_MODEL"); v != "" {
+		c.ReviewModel = v
+	}
+	if v := os.Getenv("GRAFT_ORDER_MODEL"); v != "" {
+		c.OrderModel = v
+	}
 	if v := os.Getenv("ANTHROPIC_API_KEY"); v != "" {
 		c.AnthropicAPIKey = v
 	}
@@ -204,6 +218,10 @@ func (c *Config) Set(key, value string) error {
 		c.Provider = value
 	case "model":
 		c.Model = value
+	case "review-model":
+		c.ReviewModel = value
+	case "order-model":
+		c.OrderModel = value
 	case "anthropic-api-key":
 		c.AnthropicAPIKey = value
 	case "openai-api-key":
@@ -248,6 +266,10 @@ func (c *Config) Get(key string) (string, error) {
 		return c.Provider, nil
 	case "model":
 		return c.Model, nil
+	case "review-model":
+		return c.ReviewModel, nil
+	case "order-model":
+		return c.OrderModel, nil
 	case "anthropic-api-key":
 		if c.AnthropicAPIKey == "" {
 			return "", nil

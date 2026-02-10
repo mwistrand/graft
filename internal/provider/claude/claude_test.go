@@ -82,3 +82,22 @@ func TestSetModel(t *testing.T) {
 		t.Errorf("Model() = %q, want %q", p.Model(), "claude-opus-4-5-20250514")
 	}
 }
+
+func TestEffectiveModel(t *testing.T) {
+	p, err := New("test-api-key", "default-model")
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	// Empty request model returns provider default
+	got := p.effectiveModel("")
+	if string(got) != "default-model" {
+		t.Errorf("effectiveModel(\"\") = %q, want %q", got, "default-model")
+	}
+
+	// Non-empty request model overrides provider default
+	got = p.effectiveModel("override-model")
+	if string(got) != "override-model" {
+		t.Errorf("effectiveModel(\"override-model\") = %q, want %q", got, "override-model")
+	}
+}

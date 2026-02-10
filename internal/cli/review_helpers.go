@@ -22,7 +22,9 @@ import (
 
 // initProvider creates an AI provider based on configuration.
 // Returns a cleanup function that should be called when done (may be nil).
-func initProvider(ctx context.Context, cfg *config.Config, pName, model string, forceSelect bool) (provider.Provider, func(), error) {
+// If skipModelPrompt is true, the interactive model selection prompt is suppressed
+// (e.g., when task-specific models cover all tasks).
+func initProvider(ctx context.Context, cfg *config.Config, pName, model string, forceSelect bool, skipModelPrompt bool) (provider.Provider, func(), error) {
 	if pName == "" {
 		pName = cfg.Provider
 	}
@@ -30,7 +32,7 @@ func initProvider(ctx context.Context, cfg *config.Config, pName, model string, 
 		model = cfg.Model
 	}
 
-	needsModelSelection := forceSelect || model == ""
+	needsModelSelection := forceSelect || (model == "" && !skipModelPrompt)
 
 	var p provider.Provider
 	var cleanup func()
