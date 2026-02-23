@@ -287,6 +287,88 @@ func TestGetFileDiff(t *testing.T) {
 	}
 }
 
+func TestGetEmptyTreeHash(t *testing.T) {
+	dir := setupTestRepo(t)
+	repo, _ := NewRepository(dir)
+	ctx := context.Background()
+
+	hash, err := repo.GetEmptyTreeHash(ctx)
+	if err != nil {
+		t.Fatalf("GetEmptyTreeHash() failed: %v", err)
+	}
+
+	if hash == "" {
+		t.Error("expected non-empty hash")
+	}
+
+	// SHA-1 empty tree hash is well-known
+	if len(hash) != 40 && len(hash) != 64 {
+		t.Errorf("unexpected hash length %d: %q", len(hash), hash)
+	}
+}
+
+func TestGetFullCodebaseDiff(t *testing.T) {
+	dir := setupTestRepo(t)
+	repo, _ := NewRepository(dir)
+	ctx := context.Background()
+
+	// Add a couple more files
+	writeFile(t, dir, "main.go", "package main\n\nfunc main() {}\n")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Add main.go")
+
+	result, err := repo.GetFullCodebaseDiff(ctx)
+	if err != nil {
+		t.Fatalf("GetFullCodebaseDiff() failed: %v", err)
+	}
+
+	if result.HeadRef != "HEAD" {
+		t.Errorf("HeadRef = %q, want %q", result.HeadRef, "HEAD")
+	}
+
+	// Should include all tracked files (README.md + main.go)
+	if len(result.Files) < 2 {
+		t.Errorf("expected at least 2 files, got %d", len(result.Files))
+	}
+
+	// All files should be "added" since we're diffing against empty tree
+	for _, f := range result.Files {
+		if f.Status != StatusAdded {
+			t.Errorf("file %q status = %q, want %q", f.Path, f.Status, StatusAdded)
+		}
+	}
+
+	// Commits should be empty
+	if len(result.Commits) != 0 {
+		t.Errorf("expected 0 commits, got %d", len(result.Commits))
+	}
+
+	// Stats should reflect all content
+	if result.Stats.FilesChanged < 2 {
+		t.Errorf("expected at least 2 files changed, got %d", result.Stats.FilesChanged)
+	}
+}
+
+func TestGetFullCodebaseDiffContent(t *testing.T) {
+	dir := setupTestRepo(t)
+	repo, _ := NewRepository(dir)
+	ctx := context.Background()
+
+	content, err := repo.GetFullCodebaseDiffContent(ctx)
+	if err != nil {
+		t.Fatalf("GetFullCodebaseDiffContent() failed: %v", err)
+	}
+
+	if content == "" {
+		t.Error("expected non-empty diff content")
+	}
+
+	// Should contain the README content
+	if !containsString(content, "Test Repo") {
+		t.Error("diff should contain README content")
+	}
+}
+
 func containsString(haystack, needle string) bool {
 	return len(haystack) > 0 && len(needle) > 0 &&
 		(haystack == needle || len(haystack) >= len(needle) &&

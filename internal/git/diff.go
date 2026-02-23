@@ -210,3 +210,67 @@ func (r *Repository) GetDiffStat(ctx context.Context, baseRef string) (string, e
 	}
 	return output, nil
 }
+
+// GetEmptyTreeHash returns the hash of Git's empty tree object.
+func (r *Repository) GetEmptyTreeHash(ctx context.Context) (string, error) {
+	hash, err := r.run(ctx, "hash-object", "-t", "tree", "--stdin")
+	if err != nil {
+		return "", fmt.Errorf("getting empty tree hash: %w", err)
+	}
+	return hash, nil
+}
+
+// GetFullCodebaseDiff returns diff information for all tracked files
+// by comparing HEAD against the empty tree.
+func (r *Repository) GetFullCodebaseDiff(ctx context.Context) (*DiffResult, error) {
+	emptyTree, err := r.GetEmptyTreeHash(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	files, stats, err := r.getDiffFilesTwoTree(ctx, emptyTree)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DiffResult{
+		BaseRef: emptyTree,
+		HeadRef: "HEAD",
+		Files:   files,
+		Stats:   stats,
+	}, nil
+}
+
+// getDiffFilesTwoTree parses diff stats using two-tree comparison
+// instead of three-dot notation.
+func (r *Repository) getDiffFilesTwoTree(ctx context.Context, baseRef string) ([]FileDiff, DiffStats, error) {
+	numstatOutput, err := r.run(ctx, "diff", "--numstat", baseRef, "HEAD")
+	if err != nil {
+		return nil, DiffStats{}, fmt.Errorf("getting diff numstat: %w", err)
+	}
+
+	nameStatusOutput, err := r.run(ctx, "diff", "--name-status", baseRef, "HEAD")
+	if err != nil {
+		return nil, DiffStats{}, fmt.Errorf("getting diff name-status: %w", err)
+	}
+
+	numstatMap := parseNumstat(numstatOutput)
+	files, stats := parseNameStatus(nameStatusOutput, numstatMap)
+
+	return files, stats, nil
+}
+
+// GetFullCodebaseDiffContent returns the complete unified diff of all files.
+func (r *Repository) GetFullCodebaseDiffContent(ctx context.Context) (string, error) {
+	emptyTree, err := r.GetEmptyTreeHash(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	output, err := r.run(ctx, "diff", emptyTree, "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("getting full codebase diff: %w", err)
+	}
+	return output, nil
+}
+

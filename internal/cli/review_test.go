@@ -412,6 +412,65 @@ func TestOutputAIReview_ToConsole(t *testing.T) {
 	}
 }
 
+func TestOutputAIReview_ReparsesJSONContent(t *testing.T) {
+	// Simulates a stale cache entry where Structured is nil but Content is valid JSON.
+	// Uses realistic content with code blocks and escaped characters in suggestions.
+	jsonContent := `{
+  "summary": "Test summary of the codebase review.",
+  "comments": [
+    {
+      "category": "design",
+      "severity": "critical",
+      "file": "main.go",
+      "line": 18,
+      "title": "Invalid query syntax",
+      "description": "The JPQL queries use CAST which is not valid JPQL.",
+      "suggestion": "Remove the CAST:\n` + "```" + `java\nAND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%')))\n` + "```" + `"
+    },
+    {
+      "category": "praise",
+      "severity": "nit",
+      "file": "README.md",
+      "line": 1,
+      "title": "Excellent documentation",
+      "description": "The README provides a clear overview."
+    }
+  ]
+}`
+	resp := &provider.ReviewResponse{Content: jsonContent, Structured: nil}
+
+	// Test file output
+	tmpDir := t.TempDir()
+	outputPath := tmpDir + "/review.md"
+	err := outputAIReview(resp, outputPath, "")
+	if err != nil {
+		t.Fatalf("outputAIReview() to file failed: %v", err)
+	}
+
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+	content := string(written)
+
+	// Should contain structured markdown, not raw JSON
+	if strings.HasPrefix(strings.TrimSpace(content), "{") {
+		t.Error("file output should be formatted markdown, not raw JSON")
+	}
+	if !strings.Contains(content, "Test summary") {
+		t.Error("file output should contain the summary")
+	}
+	if !strings.Contains(content, "Invalid query syntax") {
+		t.Error("file output should contain the comment title")
+	}
+
+	// Test console output (verifies the structured path is taken, not the raw JSON path)
+	err = outputAIReview(resp, "", "")
+	if err != nil {
+		t.Fatalf("outputAIReview() to console failed: %v", err)
+	}
+}
+
 func TestOutputAIReview_EmptyContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputPath := tmpDir + "/review.md"
@@ -853,6 +912,122 @@ func TestResolveReviewModel(t *testing.T) {
 				t.Errorf("resolveReviewModel() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNewScanRunner_SetsFullCodebase(t *testing.T) {
+	cfg := &config.Config{}
+	r := newScanRunner(cfg)
+	if !r.fullCodebase {
+		t.Error("expected fullCodebase to be true")
+	}
+}
+
+func TestNewScanRunner_ResolvesFlags(t *testing.T) {
+	// Set scan-specific flags
+	scanReviewModelName = "scan-review"
+	scanOrderModelName = "scan-order"
+	scanTestsFirst = true
+	scanMajorOnly = true
+	defer func() {
+		scanReviewModelName = ""
+		scanOrderModelName = ""
+		scanTestsFirst = false
+		scanMajorOnly = false
+	}()
+
+	cfg := &config.Config{
+		ReviewModel: "config-review",
+		OrderModel:  "config-order",
+	}
+	r := newScanRunner(cfg)
+
+	if r.reviewModelName != "scan-review" {
+		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "scan-review")
+	}
+	if r.orderModelName != "scan-order" {
+		t.Errorf("orderModelName = %q, want %q", r.orderModelName, "scan-order")
+	}
+	if !r.testsFirst {
+		t.Error("expected testsFirst to be true")
+	}
+	if !r.majorOnly {
+		t.Error("expected majorOnly to be true")
+	}
+}
+
+func TestNewScanRunner_FallsBackToConfig(t *testing.T) {
+	scanReviewModelName = ""
+	scanOrderModelName = ""
+	scanTestsFirst = false
+	scanMajorOnly = false
+
+	cfg := &config.Config{
+		ReviewModel: "config-review",
+		OrderModel:  "config-order",
+		TestsFirst:  true,
+		MajorOnly:   true,
+	}
+	r := newScanRunner(cfg)
+
+	if r.reviewModelName != "config-review" {
+		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "config-review")
+	}
+	if r.orderModelName != "config-order" {
+		t.Errorf("orderModelName = %q, want %q", r.orderModelName, "config-order")
+	}
+	if !r.testsFirst {
+		t.Error("expected testsFirst from config")
+	}
+	if !r.majorOnly {
+		t.Error("expected majorOnly from config")
+	}
+}
+
+func TestScanRunner_ConfigModelUsedWhenNoFlags(t *testing.T) {
+	// Simulates "graft scan --ai-review" with only cfg.Model set.
+	// Verifies that initAIProvider would pass cfg.Model to initProvider.
+	scanModelName = ""
+	scanReviewModelName = ""
+	scanOrderModelName = ""
+	defer func() {
+		scanModelName = ""
+		scanReviewModelName = ""
+		scanOrderModelName = ""
+	}()
+
+	cfg := &config.Config{
+		Model:    "gpt-5",
+		Provider: "copilot",
+	}
+	r := newScanRunner(cfg)
+	r.aiReviewFlag = "true"
+
+	// Reproduce the logic from initAIProvider
+	allTasksCovered := r.resolveReviewModel() != "" && r.resolveOrderModel() != ""
+	effectiveModel := firstNonEmpty(r.modelName, r.resolveReviewModel(), r.resolveOrderModel())
+
+	// effectiveModel is empty because no CLI or task-specific models are set
+	if effectiveModel != "" {
+		t.Errorf("effectiveModel = %q, want empty (cfg.Model is resolved in initProvider)", effectiveModel)
+	}
+	if allTasksCovered {
+		t.Error("allTasksCovered should be false when no task-specific models set")
+	}
+
+	// Simulate what initProvider does: fall back to cfg.Model
+	model := effectiveModel
+	if model == "" {
+		model = cfg.Model
+	}
+	if model != "gpt-5" {
+		t.Errorf("after config fallback, model = %q, want %q", model, "gpt-5")
+	}
+
+	// needsModelSelection should be false
+	needsModelSelection := false || (model == "" && !allTasksCovered)
+	if needsModelSelection {
+		t.Error("needsModelSelection should be false when cfg.Model is set")
 	}
 }
 

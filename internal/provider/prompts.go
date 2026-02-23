@@ -431,6 +431,22 @@ func CategoryDisplayName(cat ReviewCategory) string {
 
 // ExtractJSON extracts JSON content from a string that may contain markdown.
 func ExtractJSON(text string) string {
+	// Try to decode raw JSON starting at the first { or [. This handles cases
+	// where the AI returns pure JSON that may contain backtick code blocks
+	// inside string values (e.g., in suggestion fields), which would confuse
+	// code block detection below. json.Decoder stops at the end of the first
+	// valid JSON value, handling trailing text gracefully.
+	for i := 0; i < len(text); i++ {
+		if text[i] == '{' || text[i] == '[' {
+			dec := json.NewDecoder(strings.NewReader(text[i:]))
+			var raw json.RawMessage
+			if err := dec.Decode(&raw); err == nil {
+				return string(raw)
+			}
+			break // only try the first JSON-like start position
+		}
+	}
+
 	// Look for JSON code block
 	start := strings.Index(text, "```json")
 	if start != -1 {
@@ -452,16 +468,6 @@ func ExtractJSON(text string) string {
 		end := strings.Index(text[start:], "```")
 		if end != -1 {
 			return strings.TrimSpace(text[start : start+end])
-		}
-	}
-
-	// Look for raw JSON (starts with { or [)
-	for i := 0; i < len(text); i++ {
-		if text[i] == '{' || text[i] == '[' {
-			candidate := strings.TrimSpace(text[i:])
-			if json.Valid([]byte(candidate)) {
-				return candidate
-			}
 		}
 	}
 

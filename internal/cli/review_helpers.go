@@ -28,11 +28,20 @@ func initProvider(ctx context.Context, cfg *config.Config, pName, model string, 
 	if pName == "" {
 		pName = cfg.Provider
 	}
+	Verbose("Provider resolution: pName=%q, model=%q, configProvider=%q, configModel=%q", pName, model, cfg.Provider, cfg.Model)
 	if model == "" {
 		model = cfg.Model
+		if model != "" {
+			Verbose("Using model from config: %s", model)
+		}
+	} else {
+		Verbose("Using model: %s", model)
 	}
 
 	needsModelSelection := forceSelect || (model == "" && !skipModelPrompt)
+	if needsModelSelection {
+		Verbose("Model selection required (forceSelect=%v, model=%q, skipModelPrompt=%v)", forceSelect, model, skipModelPrompt)
+	}
 
 	var p provider.Provider
 	var cleanup func()
@@ -89,7 +98,7 @@ func initProvider(ctx context.Context, cfg *config.Config, pName, model string, 
 			return nil, nil, fmt.Errorf("model selection failed: %w", err)
 		}
 		if selected == "" {
-			return nil, nil, fmt.Errorf("no model selected")
+			return nil, nil, fmt.Errorf("no model selected; use --model flag or run 'graft config set model <model>'")
 		}
 
 		if selector, ok := p.(provider.ModelSelector); ok {

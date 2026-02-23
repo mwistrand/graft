@@ -55,6 +55,33 @@ func TestGenerateCacheKey(t *testing.T) {
 	}
 }
 
+func TestGenerateFullCodebaseCacheKey(t *testing.T) {
+	key1 := GenerateFullCodebaseCacheKey("abc123def456789")
+
+	// Key should be 16 hex characters
+	if len(key1) != 16 {
+		t.Errorf("expected key length 16, got %d", len(key1))
+	}
+
+	// Same input should produce same key
+	key2 := GenerateFullCodebaseCacheKey("abc123def456789")
+	if key1 != key2 {
+		t.Errorf("expected same key for same input, got %q and %q", key1, key2)
+	}
+
+	// Different hash should produce different key
+	key3 := GenerateFullCodebaseCacheKey("different_hash")
+	if key1 == key3 {
+		t.Errorf("expected different key for different hash")
+	}
+
+	// Should differ from branch-based cache key with same hash
+	branchKey := GenerateCacheKey("main", []git.Commit{{Hash: "abc123def456789"}})
+	if key1 == branchKey {
+		t.Errorf("full codebase key should differ from branch cache key")
+	}
+}
+
 func TestGenerateCacheKey_EmptyCommits(t *testing.T) {
 	key := GenerateCacheKey("main", []git.Commit{})
 

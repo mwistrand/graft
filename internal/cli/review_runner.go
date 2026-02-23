@@ -3,9 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/mwistrand/graft/internal/config"
+	"github.com/mwistrand/graft/internal/filescan"
 	"github.com/mwistrand/graft/internal/git"
 	"github.com/mwistrand/graft/internal/pr"
 	"github.com/mwistrand/graft/internal/prompt"
@@ -49,9 +51,14 @@ type reviewRunner struct {
 	doQuickReview    bool
 	refresh          bool
 
+	// Full codebase scan mode
+	fullCodebase bool
+	noGit        bool // true when scanning a non-git directory
+
 	// State accumulated during run
 	repo       *git.Repository
 	repoDir    string
+	headCommit *git.Commit
 	diffResult *git.DiffResult
 	repoCtx    string
 	renderer   render.Renderer
@@ -147,8 +154,10 @@ func (r *reviewRunner) run(ctx context.Context) error {
 	if err := r.openRepo(ctx); err != nil {
 		return err
 	}
-	if err := r.resolvePR(ctx); err != nil {
-		return err
+	if !r.fullCodebase {
+		if err := r.resolvePR(ctx); err != nil {
+			return err
+		}
 	}
 	if err := r.loadDiff(ctx); err != nil {
 		return err
@@ -180,10 +189,16 @@ func (r *reviewRunner) run(ctx context.Context) error {
 }
 
 // openRepo opens the git repository in the current directory.
+// In fullCodebase mode, falls back to filesystem scanning if not a git repo.
 func (r *reviewRunner) openRepo(ctx context.Context) error {
 	Verbose("Opening git repository...")
 	repo, err := git.NewRepository("")
 	if err != nil {
+		if err == git.ErrNotARepository && r.fullCodebase {
+			Verbose("Not a git repository, using filesystem scanning")
+			r.noGit = true
+			return nil
+		}
 		if err == git.ErrNotARepository {
 			return fmt.Errorf("not in a git repository")
 		}
@@ -228,6 +243,10 @@ func (r *reviewRunner) resolvePR(ctx context.Context) error {
 // loadDiff validates the base branch and loads diff information.
 // Sets r.diffResult to nil if there are no changes.
 func (r *reviewRunner) loadDiff(ctx context.Context) error {
+	if r.fullCodebase {
+		return r.loadFullCodebaseDiff(ctx)
+	}
+
 	Verbose("Validating base branch %s...", r.baseRef)
 	if err := r.repo.ValidateBranch(ctx, r.baseRef); err != nil {
 		return err
@@ -260,6 +279,72 @@ func (r *reviewRunner) loadDiff(ctx context.Context) error {
 
 	r.diffResult = diffResult
 	r.repoDir = repoDir
+	return nil
+}
+
+// loadFullCodebaseDiff loads all tracked files by diffing against the empty tree,
+// or by scanning the filesystem if not in a git repository.
+func (r *reviewRunner) loadFullCodebaseDiff(ctx context.Context) error {
+	if r.noGit {
+		return r.loadFilesystemScan()
+	}
+
+	commit, err := r.repo.GetCommit(ctx, "HEAD")
+	if err != nil {
+		return fmt.Errorf("getting HEAD commit: %w", err)
+	}
+	r.headCommit = commit
+
+	fmt.Printf("Scanning full codebase (HEAD: %s)\n\n", commit.ShortHash)
+
+	Verbose("Getting full codebase diff...")
+	diffResult, err := r.repo.GetFullCodebaseDiff(ctx)
+	if err != nil {
+		return fmt.Errorf("getting full codebase diff: %w", err)
+	}
+
+	if len(diffResult.Files) == 0 {
+		fmt.Println("No tracked files found in the repository")
+		return nil
+	}
+
+	fmt.Printf("Found %d files\n\n", len(diffResult.Files))
+
+	repoDir, err := r.repo.GetRootDir(ctx)
+	if err != nil {
+		return fmt.Errorf("getting repo root: %w", err)
+	}
+
+	r.baseRef = diffResult.BaseRef
+	r.diffResult = diffResult
+	r.repoDir = repoDir
+	return nil
+}
+
+// loadFilesystemScan scans the current directory for files without using git.
+func (r *reviewRunner) loadFilesystemScan() error {
+	dir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("getting current directory: %w", err)
+	}
+
+	fmt.Printf("Scanning directory: %s\n\n", dir)
+
+	Verbose("Scanning filesystem...")
+	diffResult, err := filescan.ScanDirectory(dir)
+	if err != nil {
+		return fmt.Errorf("scanning directory: %w", err)
+	}
+
+	if len(diffResult.Files) == 0 {
+		fmt.Println("No files found in directory")
+		return nil
+	}
+
+	fmt.Printf("Found %d files\n\n", len(diffResult.Files))
+
+	r.diffResult = diffResult
+	r.repoDir = dir
 	return nil
 }
 
@@ -298,7 +383,8 @@ func (r *reviewRunner) initAIProvider(ctx context.Context) error {
 	allTasksCovered := r.resolveReviewModel() != "" && r.resolveOrderModel() != ""
 	effectiveModel := firstNonEmpty(r.modelName, r.resolveReviewModel(), r.resolveOrderModel())
 
-	Verbose("Initializing AI provider...")
+	Verbose("Initializing AI provider (model=%q, reviewModel=%q, orderModel=%q, configModel=%q)",
+		r.modelName, r.resolveReviewModel(), r.resolveOrderModel(), r.cfg.Model)
 	p, cleanup, err := initProvider(ctx, r.cfg, r.providerName, effectiveModel, r.selectModel, allTasksCovered)
 	if err != nil {
 		return fmt.Errorf("AI provider initialization failed: %w", err)
@@ -353,7 +439,15 @@ func (r *reviewRunner) generateResults(ctx context.Context) (*reviewResults, err
 
 	// Set up cache
 	r.cache = provider.NewReviewCache(r.repoDir)
-	r.cacheKey = provider.GenerateCacheKey(r.baseRef, r.diffResult.Commits)
+	if r.noGit {
+		r.cacheKey = provider.GenerateFullCodebaseCacheKey(
+			filescan.ContentFingerprint(r.diffResult.Files),
+		)
+	} else if r.fullCodebase {
+		r.cacheKey = provider.GenerateFullCodebaseCacheKey(r.headCommit.Hash)
+	} else {
+		r.cacheKey = provider.GenerateCacheKey(r.baseRef, r.diffResult.Commits)
+	}
 
 	var cachedReview *provider.CachedReview
 	if !r.refresh {
@@ -372,7 +466,7 @@ func (r *reviewRunner) generateResults(ctx context.Context) (*reviewResults, err
 	if r.aiProvider != nil && !r.skipSummary && (cachedReview == nil || cachedReview.Summary == nil) {
 		Verbose("Getting full diff for analysis...")
 		var err error
-		fullDiff, err = r.repo.GetFullDiff(ctx, r.baseRef)
+		fullDiff, err = r.getFullDiffContent(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting full diff: %w", err)
 		}
@@ -500,7 +594,7 @@ func (r *reviewRunner) generateReview(ctx context.Context, cached *provider.Cach
 	if fullDiff == "" {
 		Verbose("Getting full diff for AI review...")
 		var err error
-		fullDiff, err = r.repo.GetFullDiff(ctx, r.baseRef)
+		fullDiff, err = r.getFullDiffContent(ctx)
 		if err != nil {
 			return fmt.Errorf("getting full diff: %w", err)
 		}
@@ -614,6 +708,17 @@ func (r *reviewRunner) saveCache(cached *provider.CachedReview, results *reviewR
 	}
 }
 
+// getFullDiffContent returns the complete diff content for AI analysis.
+func (r *reviewRunner) getFullDiffContent(ctx context.Context) (string, error) {
+	if r.noGit {
+		return filescan.GenerateFullDiff(r.repoDir, r.diffResult.Files)
+	}
+	if r.fullCodebase {
+		return r.repo.GetFullCodebaseDiffContent(ctx)
+	}
+	return r.repo.GetFullDiff(ctx, r.baseRef)
+}
+
 // promptAndDisplay prompts the user to continue, handles group selection, and runs the TUI.
 func (r *reviewRunner) promptAndDisplay(ctx context.Context, results *reviewResults) error {
 	var timeoutDuration time.Duration
@@ -652,7 +757,7 @@ func (r *reviewRunner) promptAndDisplay(ctx context.Context, results *reviewResu
 		filesToReview = testpair.PairFiles(filesToReview, r.testsFirst)
 	}
 
-	if err := tui.Run(filesToReview, r.repoDir, r.baseRef, !r.noDelta); err != nil {
+	if err := tui.Run(filesToReview, r.repoDir, r.baseRef, !r.noDelta, r.fullCodebase, r.noGit); err != nil {
 		return fmt.Errorf("running review TUI: %w", err)
 	}
 

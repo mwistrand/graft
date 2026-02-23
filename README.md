@@ -186,6 +186,26 @@ PR #123 [MERGED]: Add user authentication
   Note: Reviewing based on commit abc123def456
 ```
 
+### Full Codebase Scan
+
+Scan the entire repository, treating every tracked file as newly added. Useful for onboarding to a new codebase, architectural review, or auditing a project.
+
+```bash
+# Scan the full codebase
+graft scan
+
+# Scan with a specific model
+graft scan --model gpt-4o
+
+# Scan with detailed AI code review
+graft scan --ai-review
+
+# Skip minor files (config, docs, etc.)
+graft scan --major-only
+```
+
+The scan command uses the same AI pipeline as `graft review` but diffs HEAD against an empty tree so all files appear as new additions. In non-git directories, it falls back to filesystem scanning.
+
 ### Options
 
 ```bash
@@ -272,9 +292,7 @@ graft review main --ai-review --review-severity critical
 
 ### Response Caching
 
-Graft caches AI responses to speed up subsequent reviews of the same commits. The cache is keyed by:
-- The base branch reference
-- The commit hashes being reviewed
+Graft caches AI responses to speed up subsequent reviews of the same commits. For branch reviews, the cache is keyed by the base branch reference and commit hashes. For full-codebase scans, the key is derived from the HEAD commit hash (or a content fingerprint in non-git directories).
 
 **How it works:**
 - First review: AI generates summary, ordering, and review (if requested), results are cached
@@ -506,6 +524,7 @@ graft/
 │   ├── analysis/       # Repository structure analysis
 │   ├── cli/            # Cobra CLI commands
 │   ├── config/         # Configuration management
+│   ├── filescan/       # Filesystem scanning for non-git directories
 │   ├── git/            # Git operations
 │   ├── pr/             # Pull request URL parsing and resolution
 │   ├── prompt/         # Interactive terminal prompts

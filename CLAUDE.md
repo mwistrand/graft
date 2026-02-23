@@ -33,10 +33,12 @@ cmd/graft/           → Entry point
 internal/
   cli/               → Cobra commands
     review.go        → Review command flags and entry point
+    scan.go          → Scan command (full codebase review via empty tree diff)
     review_runner.go → reviewRunner workflow orchestration
     review_helpers.go→ Provider init, file ordering, repo analysis helpers
     review_output.go → AI review and quick review output formatting
   config/            → Config loading from ~/.config/graft/config.json
+  filescan/          → Filesystem scanning for non-git directories
   git/               → Git operations (shells out to git binary)
   analysis/          → Repository structure analysis for smarter ordering
   pr/                → PR URL parsing and GitHub CLI integration
@@ -86,10 +88,13 @@ Use `--major-only` to skip minor groups entirely.
 
 **Repository Analysis**: The `analysis` package scans repo structure to detect project type (frontend/backend/fullstack) and frameworks, caching results at `.graft/analysis.json`.
 
-**Review Caching**: AI responses (summary, ordering, and code reviews) are cached in `.graft/reviews/<key>.json` where the key is derived from commit hashes. This allows instant re-reviews of the same commits. Use `--refresh` to bypass the cache.
+**Review Caching**: AI responses (summary, ordering, and code reviews) are cached in `.graft/reviews/<key>.json`. For branch reviews, the key is derived from the base ref and commit hashes. For full-codebase scans, the key is derived from the HEAD commit hash. Use `--refresh` to bypass the cache.
 ```go
-// Cache key is generated from base ref + sorted commit hashes
+// Branch review: key from base ref + sorted commit hashes
 cacheKey := provider.GenerateCacheKey(baseRef, commits)
+
+// Full codebase scan: key from HEAD hash
+cacheKey := provider.GenerateFullCodebaseCacheKey(headHash)
 ```
 
 **AI Code Review**: The `--ai-review` flag generates structured code reviews with categories (design, functionality, complexity, tests, naming, comments, style, documentation, praise) and severity levels (critical, suggestion, nit). Use `--ai-review` alone to output to console, or `--ai-review=path/to/file.md` to write to a file. Use `--review-categories` to focus on specific categories and `--review-severity` to filter output. Custom system prompts can be placed at `.graft/code-reviewer.md` to override the default review approach.

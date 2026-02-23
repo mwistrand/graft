@@ -27,10 +27,10 @@ type ReviewModel struct {
 }
 
 // NewReviewModel creates a new review TUI.
-func NewReviewModel(files []provider.OrderedFile, repoDir, baseRef, deltaPath string) ReviewModel {
+func NewReviewModel(files []provider.OrderedFile, repoDir, baseRef, deltaPath string, fullCodebase, noGit bool) ReviewModel {
 	return ReviewModel{
 		session: prompt.NewReviewSession(files),
-		loader:  NewDiffLoader(repoDir, baseRef, deltaPath),
+		loader:  NewDiffLoader(repoDir, baseRef, deltaPath, fullCodebase, noGit),
 	}
 }
 
@@ -263,13 +263,13 @@ func (m ReviewModel) View() string {
 }
 
 // Run starts the review TUI.
-func Run(files []provider.OrderedFile, repoDir, baseRef string, useDelta bool) error {
+func Run(files []provider.OrderedFile, repoDir, baseRef string, useDelta, fullCodebase, noGit bool) error {
 	deltaPath := ""
 	if useDelta {
 		deltaPath = FindDelta()
 	}
 
-	model := NewReviewModel(files, repoDir, baseRef, deltaPath)
+	model := NewReviewModel(files, repoDir, baseRef, deltaPath, fullCodebase, noGit)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	_, err := p.Run()

@@ -55,6 +55,59 @@ func TestExtractJSON(t *testing.T) {
 	}
 }
 
+func TestExtractJSON_CodeBlocksInValues(t *testing.T) {
+	// AI review responses contain backtick code blocks inside JSON string values.
+	// ExtractJSON must not confuse these with markdown code block delimiters.
+	input := `{
+  "summary": "Test review",
+  "comments": [
+    {
+      "category": "design",
+      "severity": "critical",
+      "file": "repo.go",
+      "line": 18,
+      "title": "Invalid query syntax",
+      "description": "The query uses CAST which is not valid.",
+      "suggestion": "Remove the CAST:\n` + "```" + `java\nAND (:search IS NULL)\n` + "```" + `\nApply the same fix elsewhere."
+    }
+  ]
+}`
+
+	got := ExtractJSON(input)
+
+	// Should return the full JSON, not a fragment extracted from inside the code block
+	var parsed StructuredReview
+	if err := ParseJSONResponse(got, &parsed); err != nil {
+		t.Fatalf("ExtractJSON returned non-parseable result: %v\ngot: %s", err, got)
+	}
+	if parsed.Summary != "Test review" {
+		t.Errorf("Summary = %q, want %q", parsed.Summary, "Test review")
+	}
+	if len(parsed.Comments) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(parsed.Comments))
+	}
+	if parsed.Comments[0].Title != "Invalid query syntax" {
+		t.Errorf("Title = %q, want %q", parsed.Comments[0].Title, "Invalid query syntax")
+	}
+}
+
+func TestExtractJSON_TrailingText(t *testing.T) {
+	// AI sometimes adds text after the JSON
+	input := `{"summary": "Test", "comments": []}
+
+I hope this review is helpful! Let me know if you have questions.`
+
+	got := ExtractJSON(input)
+
+	var parsed StructuredReview
+	if err := ParseJSONResponse(got, &parsed); err != nil {
+		t.Fatalf("ExtractJSON should handle trailing text: %v\ngot: %s", err, got)
+	}
+	if parsed.Summary != "Test" {
+		t.Errorf("Summary = %q, want %q", parsed.Summary, "Test")
+	}
+}
+
 func TestParseJSONResponse(t *testing.T) {
 	input := `{"overview": "Test summary", "key_changes": ["Change 1"]}`
 

@@ -16,8 +16,13 @@ func outputAIReview(resp *provider.ReviewResponse, outputPath string, severityFi
 		return fmt.Errorf("AI review content is empty")
 	}
 
-	// Apply severity filter to structured review if present
+	// Apply severity filter to structured review if present.
+	// If Structured is nil (e.g., loaded from stale cache), try re-parsing Content.
 	structured := resp.Structured
+	if structured == nil && resp.Content != "" {
+		reparsed := provider.ParseStructuredReview(resp.Content)
+		structured = reparsed.Structured
+	}
 	if structured != nil && severityFilter != "" {
 		structured = structured.FilterBySeverity(severityFilter)
 	}

@@ -55,6 +55,15 @@ func NewReviewCache(repoRoot string) *ReviewCache {
 	return &ReviewCache{repoRoot: repoRoot}
 }
 
+// GenerateFullCodebaseCacheKey creates a cache key for full-codebase scans.
+// The key is based on the HEAD commit hash, so it invalidates when HEAD changes.
+func GenerateFullCodebaseCacheKey(headHash string) string {
+	h := sha256.New()
+	h.Write([]byte("full-codebase:"))
+	h.Write([]byte(headHash))
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
 // GenerateCacheKey creates a deterministic cache key from commits.
 // The key is based on the sorted commit hashes to ensure consistency.
 func GenerateCacheKey(baseRef string, commits []git.Commit) string {
