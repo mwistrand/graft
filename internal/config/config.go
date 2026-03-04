@@ -18,11 +18,11 @@ type Config struct {
 	// Model specifies the default model to use with the selected provider.
 	Model string `json:"model,omitempty"`
 
-	// ReviewModel specifies the model to use for review tasks (summarize, review, quick review).
+	// ReviewModel specifies the model to use for review tasks (review, quick review).
 	// Falls back to Model if empty.
 	ReviewModel string `json:"review_model,omitempty"`
 
-	// OrderModel specifies the model to use for file ordering tasks.
+	// OrderModel specifies the model to use for ordering and summary tasks.
 	// Falls back to Model if empty.
 	OrderModel string `json:"order_model,omitempty"`
 

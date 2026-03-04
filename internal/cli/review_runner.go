@@ -120,10 +120,10 @@ func (r *reviewRunner) validateModels() error {
 	hasReview := r.reviewModelName != ""
 	hasOrder := r.orderModelName != ""
 
-	// When ordering is skipped, no order model is needed
-	needsOrder := !r.skipOrdering
-	// When summary, AI review, and quick review are all disabled, no review model is needed
-	needsReview := !r.skipSummary || r.aiReviewFlag != "" || r.doQuickReview
+	// When ordering and summary are both skipped, no order model is needed
+	needsOrder := !r.skipOrdering || !r.skipSummary
+	// When AI review and quick review are both disabled, no review model is needed
+	needsReview := r.aiReviewFlag != "" || r.doQuickReview
 
 	if hasReview && !hasDefault && !hasOrder && needsOrder {
 		return fmt.Errorf("--review-model requires either --model (default) or --order-model to be set")
@@ -134,13 +134,13 @@ func (r *reviewRunner) validateModels() error {
 	return nil
 }
 
-// resolveReviewModel returns the model to use for review tasks (summarize, review, quick review).
+// resolveReviewModel returns the model to use for review tasks (review, quick review).
 // Returns empty to use provider default.
 func (r *reviewRunner) resolveReviewModel() string {
 	return r.reviewModelName
 }
 
-// resolveOrderModel returns the model to use for ordering tasks.
+// resolveOrderModel returns the model to use for ordering and summary tasks.
 // Returns empty to use provider default.
 func (r *reviewRunner) resolveOrderModel() string {
 	return r.orderModelName
@@ -554,7 +554,7 @@ func (r *reviewRunner) generateSummary(ctx context.Context, cached *provider.Cac
 	fmt.Println("Analyzing changes...")
 
 	summary, err := r.aiProvider.SummarizeChanges(ctx, &provider.SummarizeRequest{
-		Model:    r.resolveReviewModel(),
+		Model:    r.resolveOrderModel(),
 		Files:    r.diffResult.Files,
 		Commits:  r.diffResult.Commits,
 		FullDiff: fullDiff,

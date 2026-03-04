@@ -778,9 +778,9 @@ func TestValidateModels(t *testing.T) {
 			wantErr:         true,
 		},
 		{
-			name:           "order only, no default - error",
+			name:           "order only, no default, no review tasks",
 			orderModelName: "gpt-3.5",
-			wantErr:        true,
+			wantErr:        false,
 		},
 		{
 			name:            "review flag only, config default covers order",
@@ -795,9 +795,16 @@ func TestValidateModels(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:            "review only with --no-order skips validation",
+			name:            "review only with --no-order still needs order model for summary",
 			reviewModelName: "gpt-4o",
 			skipOrdering:    true,
+			wantErr:         true,
+		},
+		{
+			name:            "review only with --no-order and --no-summary skips validation",
+			reviewModelName: "gpt-4o",
+			skipOrdering:    true,
+			skipSummary:     true,
 			wantErr:         false,
 		},
 		{
@@ -807,16 +814,14 @@ func TestValidateModels(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:           "order only with --no-summary but ai-review active - error",
+			name:           "order only with ai-review active - error",
 			orderModelName: "gpt-3.5",
-			skipSummary:    true,
 			aiReviewFlag:   "true",
 			wantErr:        true,
 		},
 		{
-			name:           "order only with --no-summary but quick review active - error",
+			name:           "order only with quick review active - error",
 			orderModelName: "gpt-3.5",
-			skipSummary:    true,
 			doQuickReview:  true,
 			wantErr:        true,
 		},

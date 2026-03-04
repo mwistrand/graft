@@ -224,10 +224,10 @@ graft review main --provider claude
 # Use a specific model for both reviews and ordering (skips interactive selection)
 graft review main --model gpt-4o
 
-# Use a specific model for reviews
+# Use a specific model for review and quick review tasks
 graft review main --review-model gpt-4o
 
-# Use a specific model to determine file order
+# Use a specific model for ordering and summary tasks
 graft review main --order-model gpt-4o
 
 # Show tests before implementation files
@@ -346,8 +346,8 @@ graft config path
 |-----|-------------|---------------------|
 | `provider` | AI provider (claude, copilot) | `GRAFT_PROVIDER` |
 | `model` | Model name | `GRAFT_MODEL` |
-| `review-model` | Review Model name | `GRAFT_REVIEW_MODEL` |
-| `order-model` | Order Model name | `GRAFT_ORDER_MODEL` |
+| `review-model` | Model for review tasks (review, quick review) | `GRAFT_REVIEW_MODEL` |
+| `order-model` | Model for ordering and summary tasks | `GRAFT_ORDER_MODEL` |
 | `anthropic-api-key` | Anthropic API key | `ANTHROPIC_API_KEY` |
 | `copilot-base-url` | Copilot proxy URL (default: http://localhost:4141) | `COPILOT_BASE_URL` |
 | `delta-path` | Path to Delta binary | `GRAFT_DELTA_PATH` |

@@ -15,8 +15,8 @@ var configCmd = &cobra.Command{
 Available keys:
   provider          AI provider to use (claude, copilot)
   model             Default model for the selected provider
-  review-model      Model for review tasks (summarize, review, quick review)
-  order-model       Model for file ordering
+  review-model      Model for review tasks (review, quick review)
+  order-model       Model for ordering and summary tasks
   anthropic-api-key API key for Claude/Anthropic
   openai-api-key    API key for OpenAI
   copilot-base-url  URL of copilot-api proxy (default: http://localhost:4141)

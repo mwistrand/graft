@@ -115,8 +115,8 @@ Config file: `~/.config/graft/config.json`
 ### Provider Settings
 - `provider`: "claude" or "copilot"
 - `model`: Default model to use (if not set, interactive prompt appears)
-- `review-model`: Model for review tasks (summarize, review, quick review)
-- `order-model`: Model for file ordering
+- `review-model`: Model for review tasks (review, quick review)
+- `order-model`: Model for ordering and summary tasks
 - `anthropic-api-key`: For Claude provider
 - `openai-api-key`: For OpenAI provider
 - `copilot-base-url`: For Copilot proxy (default: http://localhost:4141)
@@ -146,8 +146,8 @@ There is no default model. If no model is configured:
 - Use `--select-model` to force the prompt even when a model is configured
 
 Per-task model overrides allow using different models for different operations:
-- `--review-model <name>`: Model for summarize, review, and quick review tasks
-- `--order-model <name>`: Model for file ordering
+- `--review-model <name>`: Model for review and quick review tasks
+- `--order-model <name>`: Model for ordering and summary tasks
 
 When using task-specific models, either `--model` or both task-specific models must be set so all tasks are covered. Skip flags (`--no-order`, `--no-summary`) reduce what's required.
 
