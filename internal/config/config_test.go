@@ -38,6 +38,7 @@ func TestConfigSetGet(t *testing.T) {
 		{"no-delta", "true"},
 		{"no-analyze", "true"},
 		{"major-only", "true"},
+		{"summarize", "true"},
 		{"review-categories", "design,functionality"},
 		{"review-severity", "critical"},
 	}
@@ -159,7 +160,7 @@ func TestConfigEnvOverrides(t *testing.T) {
 		"ANTHROPIC_API_KEY", "OPENAI_API_KEY",
 		"COPILOT_BASE_URL", "GRAFT_DELTA_PATH", "GRAFT_PROMPT_TIMEOUT", "GRAFT_TESTS_FIRST",
 		"GRAFT_INLINE_TESTS", "GRAFT_NO_DELTA", "GRAFT_NO_ANALYZE", "GRAFT_MAJOR_ONLY",
-		"GRAFT_REVIEW_CATEGORIES", "GRAFT_REVIEW_SEVERITY",
+		"GRAFT_SUMMARIZE", "GRAFT_REVIEW_CATEGORIES", "GRAFT_REVIEW_SEVERITY",
 	}
 	saved := make(map[string]string)
 	for _, v := range envVars {
@@ -190,6 +191,7 @@ func TestConfigEnvOverrides(t *testing.T) {
 	os.Setenv("GRAFT_NO_DELTA", "yes")
 	os.Setenv("GRAFT_NO_ANALYZE", "true")
 	os.Setenv("GRAFT_MAJOR_ONLY", "true")
+	os.Setenv("GRAFT_SUMMARIZE", "true")
 	os.Setenv("GRAFT_REVIEW_CATEGORIES", "design,tests")
 	os.Setenv("GRAFT_REVIEW_SEVERITY", "suggestion")
 
@@ -237,6 +239,9 @@ func TestConfigEnvOverrides(t *testing.T) {
 	}
 	if !cfg.MajorOnly {
 		t.Error("MajorOnly should be true")
+	}
+	if !cfg.Summarize {
+		t.Error("Summarize should be true")
 	}
 	if cfg.ReviewCategories != "design,tests" {
 		t.Errorf("ReviewCategories = %q, want %q", cfg.ReviewCategories, "design,tests")

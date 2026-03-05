@@ -10,7 +10,7 @@ import (
 
 // Scan-specific flags bound by Cobra.
 var (
-	scanSkipSummary      bool
+	scanSummarize        bool
 	scanSkipOrdering     bool
 	scanProviderName     string
 	scanModelName        string
@@ -37,9 +37,9 @@ var scanCmd = &cobra.Command{
 
 This command uses the same AI pipeline as "graft review" but operates on
 the entire repository instead of a branch diff:
-1. Summarizes what the codebase does using AI
-2. Determines the optimal file review order based on architectural flow
-3. Displays file contents in that order, piped through Delta for rendering
+1. Determines the optimal file review order based on architectural flow
+2. Displays file contents in that order, piped through Delta for rendering
+3. Optionally summarizes what the codebase does using AI (--summarize)
 
 Example:
   graft scan                          Scan the full codebase
@@ -51,7 +51,7 @@ Example:
 }
 
 func init() {
-	scanCmd.Flags().BoolVar(&scanSkipSummary, "no-summary", false, "Skip AI summary")
+	scanCmd.Flags().BoolVar(&scanSummarize, "summarize", false, "Include AI summary of changes")
 	scanCmd.Flags().BoolVar(&scanSkipOrdering, "no-order", false, "Skip AI ordering, use default order")
 	scanCmd.Flags().StringVar(&scanProviderName, "provider", "", "AI provider to use (default from config)")
 	scanCmd.Flags().StringVar(&scanModelName, "model", "", "Model to use (default from config)")
@@ -108,7 +108,7 @@ func newScanRunner(cfg *config.Config) *reviewRunner {
 		reviewModelName:  firstNonEmpty(scanReviewModelName, cfg.ReviewModel),
 		orderModelName:   firstNonEmpty(scanOrderModelName, cfg.OrderModel),
 		selectModel:      scanSelectModel,
-		skipSummary:      scanSkipSummary,
+		summarize:        scanSummarize || cfg.Summarize,
 		skipOrdering:     scanSkipOrdering,
 		doQuickReview:    scanQuickReview,
 		refresh:          scanRefresh,

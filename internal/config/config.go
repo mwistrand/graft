@@ -61,6 +61,9 @@ type Config struct {
 	// MajorOnly only reviews core and supporting groups, skipping minor changes.
 	MajorOnly bool `json:"major_only,omitempty"`
 
+	// Summarize includes an AI summary of changes before the review.
+	Summarize bool `json:"summarize,omitempty"`
+
 	// ReviewCategories specifies which categories to focus on in AI reviews.
 	// Comma-separated list: design,functionality,complexity,tests,naming,comments,style,documentation
 	ReviewCategories string `json:"review_categories,omitempty"`
@@ -196,6 +199,9 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("GRAFT_MAJOR_ONLY"); v != "" {
 		c.MajorOnly = parseBool(v)
 	}
+	if v := os.Getenv("GRAFT_SUMMARIZE"); v != "" {
+		c.Summarize = parseBool(v)
+	}
 	if v := os.Getenv("GRAFT_REVIEW_CATEGORIES"); v != "" {
 		c.ReviewCategories = v
 	}
@@ -249,6 +255,8 @@ func (c *Config) Set(key, value string) error {
 		c.NoAnalyze = parseBool(value)
 	case "major-only":
 		c.MajorOnly = parseBool(value)
+	case "summarize":
+		c.Summarize = parseBool(value)
 	case "review-categories":
 		c.ReviewCategories = value
 	case "review-severity":
@@ -296,6 +304,8 @@ func (c *Config) Get(key string) (string, error) {
 		return strconv.FormatBool(c.NoAnalyze), nil
 	case "major-only":
 		return strconv.FormatBool(c.MajorOnly), nil
+	case "summarize":
+		return strconv.FormatBool(c.Summarize), nil
 	case "review-categories":
 		return c.ReviewCategories, nil
 	case "review-severity":

@@ -740,7 +740,7 @@ func TestValidateModels(t *testing.T) {
 		orderModelName  string
 		cfgModel        string
 		skipOrdering    bool
-		skipSummary     bool
+		summarize       bool
 		aiReviewFlag    string
 		doQuickReview   bool
 		wantErr         bool
@@ -798,19 +798,18 @@ func TestValidateModels(t *testing.T) {
 			name:            "review only with --no-order still needs order model for summary",
 			reviewModelName: "gpt-4o",
 			skipOrdering:    true,
+			summarize:       true,
 			wantErr:         true,
 		},
 		{
-			name:            "review only with --no-order and --no-summary skips validation",
+			name:            "review only with --no-order and no --summarize skips validation",
 			reviewModelName: "gpt-4o",
 			skipOrdering:    true,
-			skipSummary:     true,
 			wantErr:         false,
 		},
 		{
-			name:           "order only with --no-summary and no review tasks",
+			name:           "order only without --summarize and no review tasks",
 			orderModelName: "gpt-3.5",
-			skipSummary:    true,
 			wantErr:        false,
 		},
 		{
@@ -837,7 +836,7 @@ func TestValidateModels(t *testing.T) {
 				reviewModelName: tt.reviewModelName,
 				orderModelName:  tt.orderModelName,
 				skipOrdering:    tt.skipOrdering,
-				skipSummary:     tt.skipSummary,
+				summarize:       tt.summarize,
 				aiReviewFlag:    tt.aiReviewFlag,
 				doQuickReview:   tt.doQuickReview,
 			}
@@ -886,6 +885,28 @@ func TestNewReviewRunner_FallsBackToConfig(t *testing.T) {
 	}
 	if r.orderModelName != "config-order" {
 		t.Errorf("orderModelName = %q, want %q", r.orderModelName, "config-order")
+	}
+}
+
+func TestNewReviewRunner_ResolvesSummarizeFromConfig(t *testing.T) {
+	summarize = false
+	defer func() { summarize = false }()
+
+	cfg := &config.Config{Summarize: true}
+	r := newReviewRunner(cfg, "main")
+	if !r.summarize {
+		t.Error("expected summarize from config when CLI flag is false")
+	}
+}
+
+func TestNewReviewRunner_SummarizeDefaultsFalse(t *testing.T) {
+	summarize = false
+	defer func() { summarize = false }()
+
+	cfg := &config.Config{}
+	r := newReviewRunner(cfg, "main")
+	if r.summarize {
+		t.Error("expected summarize to default to false")
 	}
 }
 
@@ -966,12 +987,14 @@ func TestNewScanRunner_FallsBackToConfig(t *testing.T) {
 	scanOrderModelName = ""
 	scanTestsFirst = false
 	scanMajorOnly = false
+	scanSummarize = false
 
 	cfg := &config.Config{
 		ReviewModel: "config-review",
 		OrderModel:  "config-order",
 		TestsFirst:  true,
 		MajorOnly:   true,
+		Summarize:   true,
 	}
 	r := newScanRunner(cfg)
 
@@ -986,6 +1009,9 @@ func TestNewScanRunner_FallsBackToConfig(t *testing.T) {
 	}
 	if !r.majorOnly {
 		t.Error("expected majorOnly from config")
+	}
+	if !r.summarize {
+		t.Error("expected summarize from config")
 	}
 }
 

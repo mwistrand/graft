@@ -9,7 +9,7 @@ import (
 
 // Command flags bound by Cobra; resolved into a reviewRunner at startup.
 var (
-	skipSummary      bool
+	summarize        bool
 	skipOrdering     bool
 	providerName     string
 	modelName        string
@@ -36,9 +36,9 @@ var reviewCmd = &cobra.Command{
 or review a pull request by providing its URL.
 
 This command:
-1. Summarizes the changes using AI (incorporating commit messages)
-2. Determines the optimal file review order based on architectural flow
-3. Displays diffs in that order, piped through Delta for beautiful rendering
+1. Determines the optimal file review order based on architectural flow
+2. Displays diffs in that order, piped through Delta for beautiful rendering
+3. Optionally summarizes the changes using AI (--summarize)
 
 Example:
   graft review main                                    Review changes against main
@@ -55,7 +55,7 @@ Enterprise GitHub instances are also supported.`,
 }
 
 func init() {
-	reviewCmd.Flags().BoolVar(&skipSummary, "no-summary", false, "Skip AI summary")
+	reviewCmd.Flags().BoolVar(&summarize, "summarize", false, "Include AI summary of changes")
 	reviewCmd.Flags().BoolVar(&skipOrdering, "no-order", false, "Skip AI ordering, use default order")
 	reviewCmd.Flags().StringVar(&providerName, "provider", "", "AI provider to use (default from config)")
 	reviewCmd.Flags().StringVar(&modelName, "model", "", "Model to use (default from config)")

@@ -131,6 +131,7 @@ graft config set inline-tests true      # Show test files alongside implementati
 graft config set no-delta true          # Disable Delta rendering
 graft config set no-analyze true        # Skip repository analysis
 graft config set major-only true        # Only review core/supporting groups
+graft config set summarize true         # Include AI summary of changes
 graft config set review-categories "design,functionality"  # Focus AI review
 graft config set review-severity "critical"  # Filter review output
 graft config set prompt-timeout 60      # Timeout in minutes (0 = disable)
@@ -149,7 +150,7 @@ Per-task model overrides allow using different models for different operations:
 - `--review-model <name>`: Model for review and quick review tasks
 - `--order-model <name>`: Model for ordering and summary tasks
 
-When using task-specific models, either `--model` or both task-specific models must be set so all tasks are covered. Skip flags (`--no-order`, `--no-summary`) reduce what's required.
+When using task-specific models, either `--model` or both task-specific models must be set so all tasks are covered. Skip flags (`--no-order`) and opt-in flags (`--summarize`) affect what's required.
 
 ```bash
 graft review main                                          # Prompts for model if not configured
@@ -181,6 +182,7 @@ All config options can be overridden via environment variables:
 | `no-delta` | `GRAFT_NO_DELTA` |
 | `no-analyze` | `GRAFT_NO_ANALYZE` |
 | `major-only` | `GRAFT_MAJOR_ONLY` |
+| `summarize` | `GRAFT_SUMMARIZE` |
 | `review-categories` | `GRAFT_REVIEW_CATEGORIES` |
 | `review-severity` | `GRAFT_REVIEW_SEVERITY` |
 

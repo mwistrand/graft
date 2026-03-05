@@ -3,9 +3,9 @@
 **AI-powered code review CLI that presents diffs in logical order**
 
 Graft helps you review git branches by:
-1. Summarizing changes using AI (with commit message context)
-2. Ordering files by architectural layers (entry points → business logic → adapters)
-3. Providing a beautiful diff view powered by [Delta](https://github.com/dandavison/delta)
+1. Ordering files by architectural layers (entry points → business logic → adapters)
+2. Providing a beautiful diff view powered by [Delta](https://github.com/dandavison/delta)
+3. Optionally summarizing changes using AI (`--summarize`)
 
 ## The Problem
 
@@ -209,8 +209,8 @@ The scan command uses the same AI pipeline as `graft review` but diffs HEAD agai
 ### Options
 
 ```bash
-# Skip AI summary (faster)
-graft review main --no-summary
+# Include AI summary of changes
+graft review main --summarize
 
 # Skip AI ordering (use default order)
 graft review main --no-order
@@ -351,19 +351,14 @@ graft config path
 | `anthropic-api-key` | Anthropic API key | `ANTHROPIC_API_KEY` |
 | `copilot-base-url` | Copilot proxy URL (default: http://localhost:4141) | `COPILOT_BASE_URL` |
 | `delta-path` | Path to Delta binary | `GRAFT_DELTA_PATH` |
+| `summarize` | Include AI summary of changes | `GRAFT_SUMMARIZE` |
 | `prompt-timeout` | Timeout in minutes for interactive prompts (default: 30, 0 to disable) | `GRAFT_PROMPT_TIMEOUT` |
 
 ## How It Works
 
 1. **Analyze Changes**: Graft gets the diff between your branch and the base branch, along with all commit messages.
 
-2. **AI Summary**: Claude analyzes the changes and provides:
-   - A high-level overview
-   - Key changes (bullet points)
-   - Potential concerns or risks
-   - Logical file groupings
-
-3. **Intelligent Grouping & Ordering**: While you read the summary, graft determines the best order to review files:
+2. **Intelligent Grouping & Ordering**: Graft determines the best order to review files:
    - Groups related files by feature (e.g., "User Authentication", "API Refactor")
    - Orders files within each group by architectural flow:
      - Entry points (main, handlers, CLI commands)
@@ -371,7 +366,12 @@ graft config path
      - Adapters (databases, external services)
      - Tests
 
-4. **Continue Prompt**: After displaying the summary, graft prompts you to continue:
+3. **AI Summary** (optional, via `--summarize`): The AI analyzes the changes and provides:
+   - A high-level overview
+   - Key changes (bullet points)
+   - Potential concerns or risks
+
+4. **Continue Prompt**: Graft prompts you to continue:
    ```
    Continue reviewing diffs? [Y/n] (timeout in 30m)
    ```

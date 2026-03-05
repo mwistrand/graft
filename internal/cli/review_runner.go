@@ -46,7 +46,7 @@ type reviewRunner struct {
 	reviewModelName  string
 	orderModelName   string
 	selectModel      bool
-	skipSummary      bool
+	summarize        bool
 	skipOrdering     bool
 	doQuickReview    bool
 	refresh          bool
@@ -87,7 +87,7 @@ func newReviewRunner(cfg *config.Config, baseRef string) *reviewRunner {
 		reviewModelName:  firstNonEmpty(reviewModelName, cfg.ReviewModel),
 		orderModelName:   firstNonEmpty(orderModelName, cfg.OrderModel),
 		selectModel:      selectModel,
-		skipSummary:      skipSummary,
+		summarize:        summarize || cfg.Summarize,
 		skipOrdering:     skipOrdering,
 		doQuickReview:    quickReview,
 		refresh:          refresh,
@@ -114,14 +114,14 @@ func resolveTimeout(flag, configVal int) int {
 
 // validateModels checks that task-specific model configuration is complete.
 // If a task-specific model is set but no default or counterpart model covers the other task,
-// returns an error. Skip flags (--no-order, --no-summary) are taken into account.
+// returns an error. Skip flags (--no-order) and opt-in flags (--summarize) are taken into account.
 func (r *reviewRunner) validateModels() error {
 	hasDefault := r.modelName != "" || r.cfg.Model != ""
 	hasReview := r.reviewModelName != ""
 	hasOrder := r.orderModelName != ""
 
-	// When ordering and summary are both skipped, no order model is needed
-	needsOrder := !r.skipOrdering || !r.skipSummary
+	// Order model is needed when ordering or summary is requested
+	needsOrder := !r.skipOrdering || r.summarize
 	// When AI review and quick review are both disabled, no review model is needed
 	needsReview := r.aiReviewFlag != "" || r.doQuickReview
 
@@ -374,7 +374,7 @@ func (r *reviewRunner) createRenderer() {
 
 // initAIProvider initializes the AI provider if any AI features are needed.
 func (r *reviewRunner) initAIProvider(ctx context.Context) error {
-	if r.skipSummary && r.skipOrdering && !r.doQuickReview && r.aiReviewFlag == "" {
+	if !r.summarize && r.skipOrdering && !r.doQuickReview && r.aiReviewFlag == "" {
 		return nil
 	}
 
@@ -463,7 +463,7 @@ func (r *reviewRunner) generateResults(ctx context.Context) (*reviewResults, err
 
 	// Get full diff for AI analysis (only if needed)
 	var fullDiff string
-	if r.aiProvider != nil && !r.skipSummary && (cachedReview == nil || cachedReview.Summary == nil) {
+	if r.aiProvider != nil && r.summarize && (cachedReview == nil || cachedReview.Summary == nil) {
 		Verbose("Getting full diff for analysis...")
 		var err error
 		fullDiff, err = r.getFullDiffContent(ctx)
@@ -536,7 +536,7 @@ func (r *reviewRunner) startOrdering(ctx context.Context, cached *provider.Cache
 // generateSummary produces the AI summary, using cache when available.
 // Returns the (possibly updated) fullDiff value for downstream use.
 func (r *reviewRunner) generateSummary(ctx context.Context, cached *provider.CachedReview, fullDiff string, results *reviewResults) (string, error) {
-	if r.aiProvider == nil || r.skipSummary {
+	if r.aiProvider == nil || !r.summarize {
 		return fullDiff, nil
 	}
 
