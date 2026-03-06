@@ -113,6 +113,16 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message = "Already at first file"
 			return m, nil
 
+		case "g", "home":
+			// Scroll to top of diff
+			m.viewport.GotoTop()
+			return m, nil
+
+		case "G", "end":
+			// Scroll to bottom of diff
+			m.viewport.GotoBottom()
+			return m, nil
+
 		default:
 			// Pass to viewport for scrolling
 			var cmd tea.Cmd
