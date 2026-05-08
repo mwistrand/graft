@@ -32,34 +32,52 @@ func NewProxyManager(baseURL string) *ProxyManager {
 
 // EnsureRunning checks if the proxy is running and starts it if not.
 // Returns true if the proxy was started by this call (and should be stopped later).
+//
+// Concurrent callers are safe: at most one will start the subprocess. All callers
+// wait for readiness before returning, so once EnsureRunning returns nil the proxy
+// is reachable. Only the caller that actually started the subprocess receives
+// started=true; that caller alone is responsible for Stop().
 func (m *ProxyManager) EnsureRunning(ctx context.Context, logFn func(string, ...any)) (bool, error) {
+	// Fast path: already running, no need to start anything.
 	if m.IsRunning(ctx) {
 		return false, nil
 	}
 
-	m.mu.Lock()
-	// Double-check after acquiring lock
-	if m.cmd != nil {
-		m.mu.Unlock()
-		return false, nil
-	}
-
-	logFn("Starting copilot-api proxy...")
-
-	if err := m.startLocked(ctx); err != nil {
-		m.mu.Unlock()
+	started, err := m.tryStart(ctx, logFn)
+	if err != nil {
 		return false, err
 	}
-	m.mu.Unlock()
 
 	logFn("Waiting for proxy to be ready (you may need to authenticate with GitHub)...")
 
 	if err := m.WaitReady(ctx, 2*time.Minute); err != nil {
-		m.Stop()
+		if started {
+			m.Stop()
+		}
 		return false, fmt.Errorf("proxy failed to start: %w", err)
 	}
 
-	logFn("Copilot proxy ready")
+	if started {
+		logFn("Copilot proxy ready")
+	}
+	return started, nil
+}
+
+// tryStart attempts to launch the subprocess under the lock.
+// Returns started=true only if this call actually launched the process.
+func (m *ProxyManager) tryStart(ctx context.Context, logFn func(string, ...any)) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.cmd != nil {
+		// Another goroutine already started it; we'll wait alongside them.
+		return false, nil
+	}
+
+	logFn("Starting copilot-api proxy...")
+	if err := m.startLocked(ctx); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -152,8 +170,7 @@ func (m *ProxyManager) WaitReady(ctx context.Context, timeout time.Duration) err
 			return nil
 		}
 
-		// Check if the process died
-		if m.cmd != nil && m.cmd.ProcessState != nil && m.cmd.ProcessState.Exited() {
+		if m.cmdExited() {
 			return fmt.Errorf("proxy process exited unexpectedly")
 		}
 
@@ -168,15 +185,30 @@ func (m *ProxyManager) WaitReady(ctx context.Context, timeout time.Duration) err
 	return fmt.Errorf("timeout waiting for proxy to start (did you complete GitHub authentication?)")
 }
 
+// cmdExited reports whether a started subprocess has already terminated.
+// Returns false when no process was ever started (m.cmd == nil) or when it is
+// still running. Reads m.cmd under the lock to stay race-free with Stop().
+func (m *ProxyManager) cmdExited() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cmd != nil && m.cmd.ProcessState != nil && m.cmd.ProcessState.Exited()
+}
+
 // Stop terminates the proxy if it was started by this manager.
+//
+// The cmd is detached from the manager (m.cmd = nil) before the shutdown
+// sequence runs, so concurrent observers (e.g. WaitReady) never read a
+// half-stopped subprocess. Wait/Kill operate on a local copy.
 func (m *ProxyManager) Stop() {
 	m.mu.Lock()
 	cmd := m.cmd
+	m.cmd = nil
+	m.started = false
+	m.mu.Unlock()
+
 	if cmd == nil || cmd.Process == nil {
-		m.mu.Unlock()
 		return
 	}
-	m.mu.Unlock()
 
 	cmd.Process.Signal(os.Interrupt)
 
@@ -192,11 +224,6 @@ func (m *ProxyManager) Stop() {
 		cmd.Process.Kill()
 		<-done // Reap the process to prevent zombies
 	}
-
-	m.mu.Lock()
-	m.cmd = nil
-	m.started = false
-	m.mu.Unlock()
 }
 
 // WasStarted returns true if the proxy was started by this manager.

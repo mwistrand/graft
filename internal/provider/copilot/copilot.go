@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mwistrand/graft/internal/provider"
 )
@@ -19,6 +20,11 @@ import (
 const (
 	// DefaultBaseURL is the default URL for the copilot-api proxy.
 	DefaultBaseURL = "http://localhost:4141"
+
+	// chatTimeout caps any single chat completion HTTP call. The proxy may stall
+	// indefinitely if its upstream is unhealthy; without this the CLI would hang.
+	// Caller-supplied contexts can still impose a shorter deadline.
+	chatTimeout = 5 * time.Minute
 )
 
 // Provider implements the provider.Provider interface using a copilot-api proxy.
@@ -40,7 +46,7 @@ func New(baseURL, model string) (*Provider, error) {
 	return &Provider{
 		baseURL:      baseURL,
 		model:        model,
-		client:       &http.Client{},
+		client:       &http.Client{Timeout: chatTimeout},
 		proxyManager: NewProxyManager(baseURL),
 	}, nil
 }
