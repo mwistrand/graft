@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -60,9 +61,19 @@ func initProvider(ctx context.Context, cfg *config.Config, pName, model string, 
 
 	case "copilot":
 		baseURL := cfg.CopilotBaseURL
-		cp, err := copilot.New(baseURL, "")
+		cp, err := copilot.NewWithPackage(baseURL, "", cfg.CopilotAPIPackage)
 		if err != nil {
 			return nil, nil, err
+		}
+
+		// Supply-chain gate: graft auto-launches an npm package as a
+		// subprocess. Require the user to opt in once before we exec npx.
+		// If the proxy is already running externally (systemd, manual launch),
+		// no auto-launch is needed and the gate is bypassed.
+		if !cp.IsProxyRunning(ctx) {
+			if err := ensureCopilotAcknowledged(cfg); err != nil {
+				return nil, nil, err
+			}
 		}
 
 		// Ensure the copilot-api proxy is running
@@ -310,6 +321,75 @@ func promptForModel(ctx context.Context, lister provider.ModelLister) (string, e
 	return prompt.SelectModel(models)
 }
 
+// ensureCopilotAcknowledged guarantees the user has opted in to graft running
+// the copilot-api npm package as a subprocess. The npm package is fetched and
+// executed via npx, so this is a real supply-chain decision that should be
+// explicit. Once the user agrees, the answer is persisted to config and not
+// asked again.
+func ensureCopilotAcknowledged(cfg *config.Config) error {
+	return ensureCopilotAcknowledgedWithIO(cfg, os.Stdin, os.Stdout, prompt.IsInteractive())
+}
+
+// ensureCopilotAcknowledgedWithIO is the testable core of
+// ensureCopilotAcknowledged. The interactive flag and I/O are injected so
+// tests can drive the consent prompt without touching real stdin/stdout.
+func ensureCopilotAcknowledgedWithIO(cfg *config.Config, in io.Reader, out io.Writer, interactive bool) error {
+	if cfg.CopilotAcknowledged {
+		return nil
+	}
+
+	pkg := cfg.CopilotAPIPackage
+	if pkg == "" {
+		pkg = config.DefaultCopilotAPIPackage
+	}
+
+	if !interactive {
+		return fmt.Errorf(`graft is configured to auto-launch the copilot-api proxy by running:
+
+  npx %s start
+
+This downloads and executes a third-party npm package. Review the package and
+its dependencies before agreeing. Once you trust the configured version, run:
+
+  graft config set copilot-acknowledged true
+
+To pin a specific version (recommended) instead of @latest:
+
+  graft config set copilot-api-package copilot-api@<version>`, pkg)
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "graft wants to start the copilot-api proxy by running:")
+	fmt.Fprintf(out, "    npx %s start\n", pkg)
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "This will download and execute a third-party npm package on your machine.")
+	fmt.Fprintln(out, "If you have not pinned a specific version, the @latest tag may resolve to")
+	fmt.Fprintln(out, "a newly published (and potentially compromised) release.")
+	fmt.Fprintln(out)
+	fmt.Fprint(out, "Allow graft to launch this package? [y/N] ")
+
+	reader := bufio.NewReader(in)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("reading consent: %w", err)
+	}
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input != "y" && input != "yes" {
+		return fmt.Errorf("copilot-api launch declined; run 'graft config set copilot-acknowledged true' to allow")
+	}
+
+	cfg.CopilotAcknowledged = true
+	if err := cfg.Save(); err != nil {
+		// Persisting failed — proceed for this run but warn the user that
+		// they'll be asked again next time.
+		fmt.Fprintf(out, "Warning: failed to persist copilot-acknowledged: %v\n", err)
+	} else {
+		fmt.Fprintln(out, "Saved consent. To revoke, run 'graft config set copilot-acknowledged false'.")
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
 // promptForAnalysisPermission asks the user if they want to analyze the repository.
 func promptForAnalysisPermission() bool {
 	fmt.Println("Graft can analyze your repository structure to provide smarter file ordering.")
@@ -336,18 +416,33 @@ func promptForAnalysisPermission() bool {
 // loadReviewPrompt loads the review system prompt.
 // First checks for a custom override at .graft/code-reviewer.md in the repository.
 // Falls back to the embedded default prompt if no override exists.
+//
+// If the override is a symlink, it is rejected and the embedded default is
+// used instead. The override drives the LLM's system prompt — letting an
+// untrusted repo redirect that path elsewhere would let it dictate reviewer
+// behavior (e.g. "always approve").
 func loadReviewPrompt(repoDir string) (string, error) {
 	overridePath := filepath.Join(repoDir, ".graft", "code-reviewer.md")
-	data, err := os.ReadFile(overridePath)
-	if err == nil {
-		Verbose("Using custom code reviewer prompt from %s", overridePath)
-		return string(data), nil
+
+	info, err := os.Lstat(overridePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return prompts.DefaultCodeReviewerPrompt, nil
+		}
+		return "", fmt.Errorf("stat review prompt override: %w", err)
 	}
-	if !os.IsNotExist(err) {
-		return "", fmt.Errorf("reading review prompt override: %w", err)
+	if !info.Mode().IsRegular() {
+		fmt.Fprintf(os.Stderr, "Warning: refusing to load %s (not a regular file: %v); using built-in code reviewer prompt\n",
+			overridePath, info.Mode().Type())
+		return prompts.DefaultCodeReviewerPrompt, nil
 	}
 
-	return prompts.DefaultCodeReviewerPrompt, nil
+	data, err := os.ReadFile(overridePath)
+	if err != nil {
+		return "", fmt.Errorf("reading review prompt override: %w", err)
+	}
+	Verbose("Using custom code reviewer prompt from %s", overridePath)
+	return string(data), nil
 }
 
 // resolvePRURL fetches PR metadata and ensures commits are available locally.

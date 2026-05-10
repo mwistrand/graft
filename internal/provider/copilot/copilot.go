@@ -38,6 +38,12 @@ type Provider struct {
 // New creates a new Copilot provider with the given base URL and model.
 // If model is empty, it will remain empty to allow for interactive selection.
 func New(baseURL, model string) (*Provider, error) {
+	return NewWithPackage(baseURL, model, "")
+}
+
+// NewWithPackage creates a Copilot provider that auto-launches the given npm
+// package spec when starting the proxy. An empty apiPackage uses the default.
+func NewWithPackage(baseURL, model, apiPackage string) (*Provider, error) {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
@@ -47,8 +53,15 @@ func New(baseURL, model string) (*Provider, error) {
 		baseURL:      baseURL,
 		model:        model,
 		client:       &http.Client{Timeout: chatTimeout},
-		proxyManager: NewProxyManager(baseURL),
+		proxyManager: NewProxyManagerWithPackage(baseURL, apiPackage),
 	}, nil
+}
+
+// IsProxyRunning reports whether the copilot-api proxy is reachable at the
+// configured base URL. Callers can use this to decide whether to prompt for
+// supply-chain consent before EnsureProxyRunning attempts a launch.
+func (p *Provider) IsProxyRunning(ctx context.Context) bool {
+	return p.proxyManager.IsRunning(ctx)
 }
 
 // EnsureProxyRunning starts the copilot-api proxy if it's not already running.

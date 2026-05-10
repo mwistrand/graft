@@ -8,6 +8,13 @@ const (
 	// DefaultCopilotBaseURL is the default URL for the copilot-api proxy.
 	DefaultCopilotBaseURL = "http://localhost:4141"
 
+	// DefaultCopilotAPIPackage is the npm spec used when graft auto-launches
+	// the copilot-api proxy. Users should pin a specific version via
+	// `graft config set copilot-api-package copilot-api@x.y.z` to limit the
+	// supply-chain surface; @latest is retained as the default for users who
+	// already accept that tradeoff.
+	DefaultCopilotAPIPackage = "copilot-api@latest"
+
 	// DefaultConfigDir is the directory name for graft configuration.
 	DefaultConfigDir = ".config/graft"
 
@@ -22,7 +29,8 @@ const (
 // DefaultConfig returns a Config with default values.
 func DefaultConfig() *Config {
 	return &Config{
-		Provider:      DefaultProvider,
-		PromptTimeout: DefaultPromptTimeout,
+		Provider:          DefaultProvider,
+		PromptTimeout:     DefaultPromptTimeout,
+		CopilotAPIPackage: DefaultCopilotAPIPackage,
 	}
 }

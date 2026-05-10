@@ -86,6 +86,19 @@ func ScanDirectory(dir string) (*git.DiffResult, error) {
 			return nil
 		}
 
+		// Refuse to follow symlinks. The contents of a symlink target may
+		// live outside the scan root (and outside the user's intent — e.g.
+		// pointing at ~/.ssh/id_rsa). Skip the entry entirely so its target
+		// is never sent to the AI provider.
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		// Defense in depth: also reject anything that isn't a regular file
+		// (devices, sockets, pipes).
+		if !d.Type().IsRegular() {
+			return nil
+		}
+
 		// Skip ignored files
 		if defaultIgnoreFiles[name] {
 			return nil
@@ -163,8 +176,24 @@ func countLines(data []byte) int {
 
 // GenerateFileDiff reads a file and produces synthetic unified diff output
 // showing all lines as added (as if diffing against /dev/null).
+//
+// Refuses to follow symlinks: if the target is a symlink (or any non-regular
+// file type), the call returns an error rather than reading content from
+// outside the scan root.
 func GenerateFileDiff(dir, filePath string) (string, error) {
 	fullPath := filepath.Join(dir, filePath)
+
+	// Lstat first so a symlink doesn't get auto-followed by os.ReadFile.
+	// ScanDirectory already filters these out, but GenerateFileDiff is
+	// reachable from other callers (e.g. the TUI's filesystem-mode loader).
+	info, err := os.Lstat(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("stat file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("refusing to read non-regular file %q (mode=%v)", filePath, info.Mode().Type())
+	}
+
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("reading file: %w", err)

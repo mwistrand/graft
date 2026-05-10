@@ -13,14 +13,17 @@ var configCmd = &cobra.Command{
 	Long: `View and modify graft configuration.
 
 Available keys:
-  provider          AI provider to use (claude, copilot)
-  model             Default model for the selected provider
-  review-model      Model for review tasks (review, quick review)
-  order-model       Model for ordering and summary tasks
-  anthropic-api-key API key for Claude/Anthropic
-  openai-api-key    API key for OpenAI
-  copilot-base-url  URL of copilot-api proxy (default: http://localhost:4141)
-  delta-path        Path to delta binary`,
+  provider             AI provider to use (claude, copilot)
+  model                Default model for the selected provider
+  review-model         Model for review tasks (review, quick review)
+  order-model          Model for ordering and summary tasks
+  anthropic-api-key    API key for Claude/Anthropic
+  openai-api-key       API key for OpenAI
+  copilot-base-url     URL of copilot-api proxy (default: http://localhost:4141)
+  copilot-api-package  npm package spec for the copilot-api proxy
+                       (default: copilot-api@latest; pin a version for safety)
+  copilot-acknowledged Required true before graft auto-launches copilot-api
+  delta-path           Path to delta binary`,
 	Run: func(cmd *cobra.Command, args []string) {
 		showConfig()
 	},
@@ -102,7 +105,12 @@ func showConfig() {
 	fmt.Println("Current configuration:")
 	fmt.Println()
 
-	keys := []string{"provider", "model", "review-model", "order-model", "anthropic-api-key", "openai-api-key", "copilot-base-url", "delta-path"}
+	keys := []string{
+		"provider", "model", "review-model", "order-model",
+		"anthropic-api-key", "openai-api-key",
+		"copilot-base-url", "copilot-api-package", "copilot-acknowledged",
+		"delta-path",
+	}
 	for _, key := range keys {
 		value, _ := cfg.Get(key)
 		if value == "" {

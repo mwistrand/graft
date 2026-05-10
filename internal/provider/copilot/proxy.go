@@ -13,21 +13,36 @@ import (
 	"github.com/mwistrand/graft/internal/provider"
 )
 
+// defaultAPIPackage is the npm package spec used when no override is supplied.
+// Callers should configure a pinned version (e.g. copilot-api@1.2.3) for any
+// production use; @latest is retained for backward compatibility only.
+const defaultAPIPackage = "copilot-api@latest"
+
 // ProxyManager handles the lifecycle of the copilot-api proxy server.
 type ProxyManager struct {
-	baseURL string
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	started bool
-	models  []provider.ModelInfo // cached models from /v1/models
+	baseURL    string
+	apiPackage string // npm package spec passed to npx
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	started    bool
+	models     []provider.ModelInfo // cached models from /v1/models
 }
 
 // NewProxyManager creates a new proxy manager for the given base URL.
 func NewProxyManager(baseURL string) *ProxyManager {
+	return NewProxyManagerWithPackage(baseURL, defaultAPIPackage)
+}
+
+// NewProxyManagerWithPackage creates a proxy manager that auto-launches the
+// given npm package spec. An empty apiPackage falls back to the default.
+func NewProxyManagerWithPackage(baseURL, apiPackage string) *ProxyManager {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
-	return &ProxyManager{baseURL: baseURL}
+	if apiPackage == "" {
+		apiPackage = defaultAPIPackage
+	}
+	return &ProxyManager{baseURL: baseURL, apiPackage: apiPackage}
 }
 
 // EnsureRunning checks if the proxy is running and starts it if not.
@@ -147,8 +162,9 @@ func (m *ProxyManager) startLocked(ctx context.Context) error {
 		return nil
 	}
 
-	// Try npx first (most common way to run copilot-api)
-	m.cmd = exec.CommandContext(ctx, "npx", "copilot-api@latest", "start")
+	// Try npx first (most common way to run copilot-api). The package spec is
+	// caller-controlled so users can pin a known-good version.
+	m.cmd = exec.CommandContext(ctx, "npx", m.apiPackage, "start")
 	m.cmd.Stdout = os.Stderr // Redirect to stderr so it doesn't interfere with graft output
 	m.cmd.Stderr = os.Stderr
 

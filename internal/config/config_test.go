@@ -15,6 +15,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Model != "" {
 		t.Errorf("expected model to be empty, got %q", cfg.Model)
 	}
+	if cfg.CopilotAPIPackage != DefaultCopilotAPIPackage {
+		t.Errorf("expected CopilotAPIPackage %q, got %q", DefaultCopilotAPIPackage, cfg.CopilotAPIPackage)
+	}
+	if cfg.CopilotAcknowledged {
+		t.Error("expected CopilotAcknowledged to default to false")
+	}
 }
 
 func TestConfigSetGet(t *testing.T) {
@@ -31,6 +37,8 @@ func TestConfigSetGet(t *testing.T) {
 		{"anthropic-api-key", "sk-ant-test123"},
 		{"openai-api-key", "sk-test456"},
 		{"copilot-base-url", "http://localhost:5000"},
+		{"copilot-api-package", "copilot-api@1.2.3"},
+		{"copilot-acknowledged", "true"},
 		{"delta-path", "/usr/local/bin/delta"},
 		{"prompt-timeout", "60"},
 		{"tests-first", "true"},
@@ -158,7 +166,8 @@ func TestConfigEnvOverrides(t *testing.T) {
 	envVars := []string{
 		"GRAFT_PROVIDER", "GRAFT_MODEL", "GRAFT_REVIEW_MODEL", "GRAFT_ORDER_MODEL",
 		"ANTHROPIC_API_KEY", "OPENAI_API_KEY",
-		"COPILOT_BASE_URL", "GRAFT_DELTA_PATH", "GRAFT_PROMPT_TIMEOUT", "GRAFT_TESTS_FIRST",
+		"COPILOT_BASE_URL", "GRAFT_COPILOT_API_PACKAGE", "GRAFT_COPILOT_ACKNOWLEDGED",
+		"GRAFT_DELTA_PATH", "GRAFT_PROMPT_TIMEOUT", "GRAFT_TESTS_FIRST",
 		"GRAFT_INLINE_TESTS", "GRAFT_NO_DELTA", "GRAFT_NO_ANALYZE", "GRAFT_MAJOR_ONLY",
 		"GRAFT_SUMMARIZE", "GRAFT_REVIEW_CATEGORIES", "GRAFT_REVIEW_SEVERITY",
 	}
@@ -184,6 +193,8 @@ func TestConfigEnvOverrides(t *testing.T) {
 	os.Setenv("ANTHROPIC_API_KEY", "env-anthropic-key")
 	os.Setenv("OPENAI_API_KEY", "env-openai-key")
 	os.Setenv("COPILOT_BASE_URL", "http://localhost:5000")
+	os.Setenv("GRAFT_COPILOT_API_PACKAGE", "copilot-api@9.9.9")
+	os.Setenv("GRAFT_COPILOT_ACKNOWLEDGED", "yes")
 	os.Setenv("GRAFT_DELTA_PATH", "/custom/delta")
 	os.Setenv("GRAFT_PROMPT_TIMEOUT", "45")
 	os.Setenv("GRAFT_TESTS_FIRST", "true")
@@ -218,6 +229,12 @@ func TestConfigEnvOverrides(t *testing.T) {
 	}
 	if cfg.CopilotBaseURL != "http://localhost:5000" {
 		t.Errorf("CopilotBaseURL = %q, want %q", cfg.CopilotBaseURL, "http://localhost:5000")
+	}
+	if cfg.CopilotAPIPackage != "copilot-api@9.9.9" {
+		t.Errorf("CopilotAPIPackage = %q, want %q", cfg.CopilotAPIPackage, "copilot-api@9.9.9")
+	}
+	if !cfg.CopilotAcknowledged {
+		t.Error("CopilotAcknowledged should be true (parsed from 'yes')")
 	}
 	if cfg.DeltaPath != "/custom/delta" {
 		t.Errorf("DeltaPath = %q, want %q", cfg.DeltaPath, "/custom/delta")

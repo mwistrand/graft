@@ -140,6 +140,55 @@ func TestStop_Idempotent(t *testing.T) {
 	pm.Stop()
 }
 
+// TestNew_InstallsChatTimeout verifies that New and NewWithPackage wire the
+// shared chatTimeout into the http.Client. This locks the timeout in at the
+// constructor so future refactors can't silently drop it.
+func TestNew_InstallsChatTimeout(t *testing.T) {
+	t.Run("New", func(t *testing.T) {
+		p, err := New("", "")
+		if err != nil {
+			t.Fatalf("New returned %v", err)
+		}
+		if p.client.Timeout != chatTimeout {
+			t.Errorf("client.Timeout = %v, want %v", p.client.Timeout, chatTimeout)
+		}
+	})
+	t.Run("NewWithPackage", func(t *testing.T) {
+		p, err := NewWithPackage("", "", "copilot-api@1.2.3")
+		if err != nil {
+			t.Fatalf("NewWithPackage returned %v", err)
+		}
+		if p.client.Timeout != chatTimeout {
+			t.Errorf("client.Timeout = %v, want %v", p.client.Timeout, chatTimeout)
+		}
+	})
+}
+
+// TestNewProxyManagerWithPackage verifies that the configured npm package spec
+// is what the manager will exec, not the hardcoded default. This is the
+// supply-chain pinning lever — silent regressions here would let users think
+// they pinned a version while still launching @latest.
+func TestNewProxyManagerWithPackage(t *testing.T) {
+	t.Run("explicit pin", func(t *testing.T) {
+		pm := NewProxyManagerWithPackage("", "copilot-api@1.2.3")
+		if pm.apiPackage != "copilot-api@1.2.3" {
+			t.Errorf("apiPackage = %q, want %q", pm.apiPackage, "copilot-api@1.2.3")
+		}
+	})
+	t.Run("empty falls back to default", func(t *testing.T) {
+		pm := NewProxyManagerWithPackage("", "")
+		if pm.apiPackage != defaultAPIPackage {
+			t.Errorf("apiPackage = %q, want %q", pm.apiPackage, defaultAPIPackage)
+		}
+	})
+	t.Run("legacy NewProxyManager uses default", func(t *testing.T) {
+		pm := NewProxyManager("")
+		if pm.apiPackage != defaultAPIPackage {
+			t.Errorf("apiPackage = %q, want %q", pm.apiPackage, defaultAPIPackage)
+		}
+	})
+}
+
 // TestEnsureRunning_StartFailure exercises the error return from tryStart when
 // the subprocess cannot be launched. With PATH cleared, exec.Cmd.Start fails to
 // resolve "npx" and the error must propagate without setting started.

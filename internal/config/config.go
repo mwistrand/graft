@@ -35,6 +35,18 @@ type Config struct {
 	// CopilotBaseURL is the URL of the copilot-api proxy server.
 	CopilotBaseURL string `json:"copilot_base_url,omitempty"`
 
+	// CopilotAPIPackage is the npm package spec graft auto-launches via npx
+	// when starting the copilot-api proxy. Defaults to copilot-api@latest;
+	// pin a specific version for supply-chain hardening.
+	CopilotAPIPackage string `json:"copilot_api_package,omitempty"`
+
+	// CopilotAcknowledged records that the user has consented to graft
+	// auto-launching the copilot-api npm package as a subprocess. While
+	// false, graft will refuse to spawn the proxy and prompt for consent
+	// (or, in non-interactive mode, error out) — this matches the audit
+	// recommendation to make supply-chain trust an explicit decision.
+	CopilotAcknowledged bool `json:"copilot_acknowledged,omitempty"`
+
 	// DeltaPath is the path to the delta binary. If empty, uses PATH lookup.
 	DeltaPath string `json:"delta_path,omitempty"`
 
@@ -175,6 +187,12 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("COPILOT_BASE_URL"); v != "" {
 		c.CopilotBaseURL = v
 	}
+	if v := os.Getenv("GRAFT_COPILOT_API_PACKAGE"); v != "" {
+		c.CopilotAPIPackage = v
+	}
+	if v := os.Getenv("GRAFT_COPILOT_ACKNOWLEDGED"); v != "" {
+		c.CopilotAcknowledged = parseBool(v)
+	}
 	if v := os.Getenv("GRAFT_DELTA_PATH"); v != "" {
 		c.DeltaPath = v
 	}
@@ -234,6 +252,10 @@ func (c *Config) Set(key, value string) error {
 		c.OpenAIAPIKey = value
 	case "copilot-base-url":
 		c.CopilotBaseURL = value
+	case "copilot-api-package":
+		c.CopilotAPIPackage = value
+	case "copilot-acknowledged":
+		c.CopilotAcknowledged = parseBool(value)
 	case "delta-path":
 		c.DeltaPath = value
 	case "prompt-timeout":
@@ -290,6 +312,10 @@ func (c *Config) Get(key string) (string, error) {
 		return maskAPIKey(c.OpenAIAPIKey), nil
 	case "copilot-base-url":
 		return c.CopilotBaseURL, nil
+	case "copilot-api-package":
+		return c.CopilotAPIPackage, nil
+	case "copilot-acknowledged":
+		return strconv.FormatBool(c.CopilotAcknowledged), nil
 	case "delta-path":
 		return c.DeltaPath, nil
 	case "prompt-timeout":

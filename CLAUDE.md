@@ -99,7 +99,7 @@ cacheKey := provider.GenerateFullCodebaseCacheKey(headHash)
 
 **AI Code Review**: The `--ai-review` flag generates structured code reviews with categories (design, functionality, complexity, tests, naming, comments, style, documentation, praise) and severity levels (critical, suggestion, nit). Use `--ai-review` alone to output to console, or `--ai-review=path/to/file.md` to write to a file. Use `--review-categories` to focus on specific categories and `--review-severity` to filter output. Custom system prompts can be placed at `.graft/code-reviewer.md` to override the default review approach.
 
-**Copilot Proxy**: The copilot provider auto-starts `npx copilot-api@latest` if not running, with a 2-minute timeout for GitHub authentication.
+**Copilot Proxy**: The copilot provider auto-starts the configured npm package (default `copilot-api@latest`, override via `copilot-api-package`) with a 2-minute timeout for GitHub authentication. Because this fetches and executes a third-party package, graft requires a one-time opt-in: it prompts for consent on first launch and persists the answer as `copilot-acknowledged`. In non-interactive contexts (no TTY), graft refuses to launch and prints instructions for setting `copilot-acknowledged true`. If the proxy is already running externally, the consent gate is bypassed.
 
 ### Adding a New Provider
 
@@ -120,6 +120,8 @@ Config file: `~/.config/graft/config.json`
 - `anthropic-api-key`: For Claude provider
 - `openai-api-key`: For OpenAI provider
 - `copilot-base-url`: For Copilot proxy (default: http://localhost:4141)
+- `copilot-api-package`: npm package spec graft auto-launches via `npx` for the proxy (default: `copilot-api@latest`). Pin a specific version (e.g. `copilot-api@1.2.3`) to limit supply-chain exposure.
+- `copilot-acknowledged`: Records that the user consented to graft running the configured copilot-api npm package as a subprocess. Defaults to `false`; graft prompts on first auto-launch and persists `true`. Set manually with `graft config set copilot-acknowledged true` for non-interactive environments.
 
 ### Review Preferences
 
@@ -175,6 +177,8 @@ All config options can be overridden via environment variables:
 | `anthropic-api-key` | `ANTHROPIC_API_KEY` |
 | `openai-api-key` | `OPENAI_API_KEY` |
 | `copilot-base-url` | `COPILOT_BASE_URL` |
+| `copilot-api-package` | `GRAFT_COPILOT_API_PACKAGE` |
+| `copilot-acknowledged` | `GRAFT_COPILOT_ACKNOWLEDGED` |
 | `delta-path` | `GRAFT_DELTA_PATH` |
 | `prompt-timeout` | `GRAFT_PROMPT_TIMEOUT` |
 | `tests-first` | `GRAFT_TESTS_FIRST` |

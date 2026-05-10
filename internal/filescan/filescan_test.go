@@ -169,6 +169,62 @@ func TestGenerateFileDiff(t *testing.T) {
 	}
 }
 
+// TestScanDirectory_SkipsSymlinks verifies that symlinks pointing inside or
+// outside the scan root are never enumerated. This blocks an exfiltration
+// vector where an adversarial repo links secrets.txt -> ~/.ssh/id_rsa, which
+// would otherwise be read into the AI provider's prompt.
+func TestScanDirectory_SkipsSymlinks(t *testing.T) {
+	dir := setupTestDir(t)
+
+	// Create a target outside the scan dir.
+	external := t.TempDir()
+	secretPath := filepath.Join(external, "id_rsa")
+	if err := os.WriteFile(secretPath, []byte("AAAA-PRETEND-PRIVATE-KEY-BBBB"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Symlink inside the scan dir pointing at the external secret.
+	if err := os.Symlink(secretPath, filepath.Join(dir, "leak.txt")); err != nil {
+		t.Skipf("skipping: symlink creation not permitted: %v", err)
+	}
+	// Symlink to a sibling regular file inside the dir — also skipped.
+	if err := os.Symlink(filepath.Join(dir, "main.go"), filepath.Join(dir, "alias.go")); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ScanDirectory(dir)
+	if err != nil {
+		t.Fatalf("ScanDirectory() failed: %v", err)
+	}
+
+	for _, f := range result.Files {
+		if f.Path == "leak.txt" || f.Path == "alias.go" {
+			t.Errorf("symlink %q was enumerated; want skipped", f.Path)
+		}
+	}
+}
+
+func TestGenerateFileDiff_RejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+
+	target := filepath.Join(dir, "real.txt")
+	if err := os.WriteFile(target, []byte("real content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("skipping: symlink creation not permitted: %v", err)
+	}
+
+	_, err := GenerateFileDiff(dir, "link.txt")
+	if err == nil {
+		t.Fatal("expected error when GenerateFileDiff is given a symlink, got nil")
+	}
+	if !strings.Contains(err.Error(), "non-regular file") {
+		t.Errorf("error = %q, want it to mention non-regular file", err.Error())
+	}
+}
+
 func TestGenerateFileDiff_Binary(t *testing.T) {
 	dir := t.TempDir()
 	binaryContent := []byte{0x89, 0x50, 0x4E, 0x47, 0x00, 0x0D, 0x0A, 0x1A}
