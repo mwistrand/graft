@@ -108,7 +108,7 @@ Output rendering:
 ### 1. Provider Abstraction
 
 The `Provider` interface allows swapping AI backends without changing application code. This enables:
-- Adding new providers (OpenAI, Copilot, local models)
+- Adding new providers (additional hosted LLMs, local models)
 - Testing with mock providers
 - User choice of backend
 

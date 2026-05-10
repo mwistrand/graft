@@ -4,7 +4,6 @@
 package render
 
 import (
-	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -12,19 +11,15 @@ import (
 	"github.com/mwistrand/graft/internal/provider"
 )
 
-// Renderer handles output display for code review.
+// Renderer handles output display for the AI summary and ordering panels.
+// Per-file diff rendering lives in the TUI package; the renderer is purely
+// for the pre-review prose output.
 type Renderer interface {
 	// RenderSummary displays the AI-generated summary.
 	RenderSummary(summary *provider.SummarizeResponse) error
 
 	// RenderOrdering displays the file ordering with reasoning.
 	RenderOrdering(order *provider.OrderResponse) error
-
-	// RenderFileDiff displays the diff for a single file.
-	RenderFileDiff(ctx context.Context, repoDir, baseRef, filePath string, fileNum, totalFiles int) error
-
-	// RenderFileHeader displays a header for a file before its diff.
-	RenderFileHeader(file *provider.OrderedFile, fileNum, totalFiles int) error
 }
 
 // Options configures the renderer.

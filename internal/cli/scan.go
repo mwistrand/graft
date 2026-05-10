@@ -4,31 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mwistrand/graft/internal/config"
 	"github.com/spf13/cobra"
 )
 
-// Scan-specific flags bound by Cobra.
-var (
-	scanSummarize        bool
-	scanSkipOrdering     bool
-	scanProviderName     string
-	scanModelName        string
-	scanReviewModelName  string
-	scanOrderModelName   string
-	scanSelectModel      bool
-	scanNoDelta          bool
-	scanTestsFirst       bool
-	scanInlineTests      bool
-	scanRefresh          bool
-	scanNoAnalyze        bool
-	scanAIReview         string
-	scanPromptTimeout    int
-	scanReviewCategories string
-	scanReviewSeverity   string
-	scanMajorOnly        bool
-	scanQuickReview      bool
-)
+// scanCmdFlags carries the flag values for `graft scan`. Mirrors review's
+// flag surface; see reviewFlags in review_flags.go.
+var scanCmdFlags reviewFlags
 
 var scanCmd = &cobra.Command{
 	Use:   "scan",
@@ -51,26 +32,7 @@ Example:
 }
 
 func init() {
-	scanCmd.Flags().BoolVar(&scanSummarize, "summarize", false, "Include AI summary of changes")
-	scanCmd.Flags().BoolVar(&scanSkipOrdering, "no-order", false, "Skip AI ordering, use default order")
-	scanCmd.Flags().StringVar(&scanProviderName, "provider", "", "AI provider to use (default from config)")
-	scanCmd.Flags().StringVar(&scanModelName, "model", "", "Model to use (default from config)")
-	scanCmd.Flags().StringVar(&scanReviewModelName, "review-model", "", "Model for review tasks (review, quick review)")
-	scanCmd.Flags().StringVar(&scanOrderModelName, "order-model", "", "Model for ordering and summary tasks")
-	scanCmd.Flags().BoolVar(&scanSelectModel, "select-model", false, "Force interactive model selection")
-	scanCmd.Flags().BoolVar(&scanNoDelta, "no-delta", false, "Disable Delta rendering")
-	scanCmd.Flags().BoolVar(&scanTestsFirst, "tests-first", false, "Show test files before implementation")
-	scanCmd.Flags().BoolVar(&scanInlineTests, "inline-tests", false, "Show test files alongside their implementation")
-	scanCmd.Flags().BoolVar(&scanRefresh, "refresh", false, "Re-analyze repository and refresh AI cache")
-	scanCmd.Flags().BoolVar(&scanNoAnalyze, "no-analyze", false, "Skip repository analysis")
-	scanCmd.Flags().StringVar(&scanAIReview, "ai-review", "", "Generate detailed AI code review (optionally specify output file)")
-	scanCmd.Flags().Lookup("ai-review").NoOptDefVal = "true"
-	scanCmd.Flags().IntVar(&scanPromptTimeout, "prompt-timeout", -1, "Timeout in minutes for interactive prompts (0 = no timeout, default: 30)")
-	scanCmd.Flags().StringVar(&scanReviewCategories, "review-categories", "", "Focus AI review on specific categories (comma-separated: design,functionality,complexity,tests,naming,comments,style,documentation)")
-	scanCmd.Flags().StringVar(&scanReviewSeverity, "review-severity", "", "Filter review output by minimum severity (critical, suggestion, nit)")
-	scanCmd.Flags().BoolVar(&scanMajorOnly, "major-only", false, "Only review core and supporting groups, skip minor changes")
-	scanCmd.Flags().BoolVar(&scanQuickReview, "quick", false, "Perform a quick initial assessment before full review")
-
+	scanCmdFlags.bind(scanCmd)
 	rootCmd.AddCommand(scanCmd)
 }
 
@@ -85,32 +47,6 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("configuration not loaded")
 	}
 
-	runner := newScanRunner(cfg)
+	runner := scanCmdFlags.toRunner(cfg, "", true)
 	return runner.run(ctx)
-}
-
-// newScanRunner creates a reviewRunner configured for full-codebase scanning.
-func newScanRunner(cfg *config.Config) *reviewRunner {
-	return &reviewRunner{
-		cfg:              cfg,
-		fullCodebase:     true,
-		testsFirst:       scanTestsFirst || cfg.TestsFirst,
-		inlineTests:      scanInlineTests || cfg.InlineTests,
-		noDelta:          scanNoDelta || cfg.NoDelta,
-		noAnalyze:        scanNoAnalyze || cfg.NoAnalyze,
-		majorOnly:        scanMajorOnly || cfg.MajorOnly,
-		reviewCategories: firstNonEmpty(scanReviewCategories, cfg.ReviewCategories),
-		reviewSeverity:   firstNonEmpty(scanReviewSeverity, cfg.ReviewSeverity),
-		aiReviewFlag:     scanAIReview,
-		promptTimeoutMin: resolveTimeout(scanPromptTimeout, cfg.PromptTimeout),
-		providerName:     scanProviderName,
-		modelName:        scanModelName,
-		reviewModelName:  firstNonEmpty(scanReviewModelName, cfg.ReviewModel),
-		orderModelName:   firstNonEmpty(scanOrderModelName, cfg.OrderModel),
-		selectModel:      scanSelectModel,
-		summarize:        scanSummarize || cfg.Summarize,
-		skipOrdering:     scanSkipOrdering,
-		doQuickReview:    scanQuickReview,
-		refresh:          scanRefresh,
-	}
 }

@@ -379,7 +379,7 @@ To pin a specific version (recommended) instead of @latest:
 	}
 
 	cfg.CopilotAcknowledged = true
-	if err := cfg.Save(); err != nil {
+	if err := cfg.SaveTo(cfgFile); err != nil {
 		// Persisting failed — proceed for this run but warn the user that
 		// they'll be asked again next time.
 		fmt.Fprintf(out, "Warning: failed to persist copilot-acknowledged: %v\n", err)

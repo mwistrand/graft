@@ -561,7 +561,7 @@ make lint
 
 ## Adding New Providers
 
-Graft is designed to support multiple AI providers. See [docs/providers.md](docs/providers.md) for instructions on adding new providers like OpenAI, Copilot, or local models.
+Graft is designed to support multiple AI providers. See [docs/providers.md](docs/providers.md) for instructions on adding new providers (e.g. additional hosted LLMs or local models).
 
 ## License
 

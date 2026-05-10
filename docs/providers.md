@@ -8,7 +8,7 @@ All providers must implement the `Provider` interface defined in `internal/provi
 
 ```go
 type Provider interface {
-    // Name returns the provider identifier (e.g., "claude", "openai")
+    // Name returns the provider identifier (e.g., "claude", "copilot")
     Name() string
 
     // SummarizeChanges analyzes a diff and returns a structured summary
@@ -26,17 +26,17 @@ type Provider interface {
 Create a new directory under `internal/provider/`:
 
 ```
-internal/provider/openai/
-├── openai.go      # Main implementation
-├── openai_test.go # Tests
-└── prompts.go     # Provider-specific prompts (optional)
+internal/provider/myprovider/
+├── myprovider.go      # Main implementation
+├── myprovider_test.go # Tests
+└── prompts.go         # Provider-specific prompts (optional)
 ```
 
 ### 2. Implement the Provider
 
 ```go
-// internal/provider/openai/openai.go
-package openai
+// internal/provider/myprovider/myprovider.go
+package myprovider
 
 import (
     "context"
@@ -44,31 +44,31 @@ import (
 )
 
 type Provider struct {
-    client *openai.Client
+    client *Client
     model  string
 }
 
 func New(apiKey, model string) (*Provider, error) {
     if apiKey == "" {
-        return nil, errors.New("OpenAI API key is required")
+        return nil, errors.New("API key is required")
     }
     // Initialize client...
     return &Provider{client: client, model: model}, nil
 }
 
 func (p *Provider) Name() string {
-    return "openai"
+    return "myprovider"
 }
 
 func (p *Provider) SummarizeChanges(ctx context.Context, req *provider.SummarizeRequest) (*provider.SummarizeResponse, error) {
     // Build prompt from req.Files, req.Commits, req.FullDiff
-    // Call OpenAI API
+    // Call the upstream API
     // Parse response into SummarizeResponse
 }
 
 func (p *Provider) OrderFiles(ctx context.Context, req *provider.OrderRequest) (*provider.OrderResponse, error) {
     // Build prompt from req.Files, req.Commits
-    // Call OpenAI API
+    // Call the upstream API
     // Parse response into OrderResponse
 }
 ```
@@ -80,22 +80,22 @@ Update `internal/config/config.go`:
 ```go
 type Config struct {
     // ... existing fields ...
-    OpenAIAPIKey string `json:"openai_api_key,omitempty"`
+    MyProviderAPIKey string `json:"myprovider_api_key,omitempty"`
 }
 
 func (c *Config) applyEnvOverrides() {
     // ... existing overrides ...
-    if v := os.Getenv("OPENAI_API_KEY"); v != "" {
-        c.OpenAIAPIKey = v
+    if v := os.Getenv("MYPROVIDER_API_KEY"); v != "" {
+        c.MyProviderAPIKey = v
     }
 }
 
 func (c *Config) Validate() error {
     switch c.Provider {
     // ... existing cases ...
-    case "openai":
-        if c.OpenAIAPIKey == "" {
-            return errors.New("OpenAI API key not set")
+    case "myprovider":
+        if c.MyProviderAPIKey == "" {
+            return errors.New("myprovider API key not set")
         }
     }
 }
@@ -107,15 +107,15 @@ Update `internal/cli/review.go`:
 
 ```go
 import (
-    "github.com/mwistrand/graft/internal/provider/openai"
+    "github.com/mwistrand/graft/internal/provider/myprovider"
 )
 
 func initProvider(cfg *config.Config) (provider.Provider, error) {
     switch cfg.Provider {
     case "claude", "":
         return claude.New(cfg.AnthropicAPIKey, cfg.Model)
-    case "openai":
-        return openai.New(cfg.OpenAIAPIKey, cfg.Model)
+    case "myprovider":
+        return myprovider.New(cfg.MyProviderAPIKey, cfg.Model)
     default:
         return nil, fmt.Errorf("unknown provider %q", cfg.Provider)
     }
@@ -124,7 +124,7 @@ func initProvider(cfg *config.Config) (provider.Provider, error) {
 
 ### 5. Write Tests
 
-Create comprehensive tests in `openai_test.go`:
+Create comprehensive tests in `myprovider_test.go`:
 
 ```go
 func TestNew(t *testing.T) {

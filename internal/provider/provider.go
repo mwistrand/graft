@@ -1,5 +1,5 @@
 // Package provider defines the interface for AI providers used in code review.
-// Implementations can use different backends (Claude, OpenAI, etc.) while
+// Implementations can use different backends (Claude, Copilot, etc.) while
 // presenting a consistent interface to the rest of the application.
 package provider
 
@@ -11,9 +11,9 @@ import (
 )
 
 // Provider defines the interface for AI-powered code review operations.
-// Implementations exist for Claude, OpenAI, and other LLM providers.
+// Implementations exist for Claude and Copilot.
 type Provider interface {
-	// Name returns the provider identifier (e.g., "claude", "openai").
+	// Name returns the provider identifier (e.g., "claude", "copilot").
 	Name() string
 
 	// SummarizeChanges analyzes a diff and returns a structured summary.

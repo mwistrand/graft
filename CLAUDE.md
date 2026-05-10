@@ -118,7 +118,6 @@ Config file: `~/.config/graft/config.json`
 - `review-model`: Model for review tasks (review, quick review)
 - `order-model`: Model for ordering and summary tasks
 - `anthropic-api-key`: For Claude provider
-- `openai-api-key`: For OpenAI provider
 - `copilot-base-url`: For Copilot proxy (default: http://localhost:4141)
 - `copilot-api-package`: npm package spec graft auto-launches via `npx` for the proxy (default: `copilot-api@latest`). Pin a specific version (e.g. `copilot-api@1.2.3`) to limit supply-chain exposure.
 - `copilot-acknowledged`: Records that the user consented to graft running the configured copilot-api npm package as a subprocess. Defaults to `false`; graft prompts on first auto-launch and persists `true`. Set manually with `graft config set copilot-acknowledged true` for non-interactive environments.
@@ -175,7 +174,6 @@ All config options can be overridden via environment variables:
 | `review-model` | `GRAFT_REVIEW_MODEL` |
 | `order-model` | `GRAFT_ORDER_MODEL` |
 | `anthropic-api-key` | `ANTHROPIC_API_KEY` |
-| `openai-api-key` | `OPENAI_API_KEY` |
 | `copilot-base-url` | `COPILOT_BASE_URL` |
 | `copilot-api-package` | `GRAFT_COPILOT_API_PACKAGE` |
 | `copilot-acknowledged` | `GRAFT_COPILOT_ACKNOWLEDGED` |

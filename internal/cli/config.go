@@ -18,7 +18,6 @@ Available keys:
   review-model         Model for review tasks (review, quick review)
   order-model          Model for ordering and summary tasks
   anthropic-api-key    API key for Claude/Anthropic
-  openai-api-key       API key for OpenAI
   copilot-base-url     URL of copilot-api proxy (default: http://localhost:4141)
   copilot-api-package  npm package spec for the copilot-api proxy
                        (default: copilot-api@latest; pin a version for safety)
@@ -34,7 +33,7 @@ var configGetCmd = &cobra.Command{
 	Short: "Get a configuration value",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		cfg, err := config.LoadFrom(cfgFile)
 		if err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
@@ -58,7 +57,7 @@ var configSetCmd = &cobra.Command{
 	Short: "Set a configuration value",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load()
+		cfg, err := config.LoadFrom(cfgFile)
 		if err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
@@ -67,7 +66,7 @@ var configSetCmd = &cobra.Command{
 			return err
 		}
 
-		if err := cfg.Save(); err != nil {
+		if err := cfg.SaveTo(cfgFile); err != nil {
 			return fmt.Errorf("saving config: %w", err)
 		}
 
@@ -107,7 +106,7 @@ func showConfig() {
 
 	keys := []string{
 		"provider", "model", "review-model", "order-model",
-		"anthropic-api-key", "openai-api-key",
+		"anthropic-api-key",
 		"copilot-base-url", "copilot-api-package", "copilot-acknowledged",
 		"delta-path",
 	}

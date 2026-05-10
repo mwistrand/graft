@@ -22,9 +22,6 @@ type FileDiff struct {
 
 	// IsBinary indicates whether this is a binary file.
 	IsBinary bool
-
-	// Patch contains the actual diff content for this file.
-	Patch string
 }
 
 // Commit represents a git commit with its metadata.

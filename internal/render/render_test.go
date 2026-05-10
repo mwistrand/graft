@@ -2,9 +2,7 @@ package render
 
 import (
 	"bytes"
-	"context"
 	"os/exec"
-	"path/filepath"
 	"testing"
 
 	"github.com/mwistrand/graft/internal/provider"
@@ -140,69 +138,6 @@ func TestFallbackRenderer_RenderOrdering(t *testing.T) {
 	}
 }
 
-func TestFallbackRenderer_RenderFileHeader(t *testing.T) {
-	buf := new(bytes.Buffer)
-	r := newFallbackRenderer(Options{Output: buf, ColorEnabled: false})
-
-	file := &provider.OrderedFile{
-		Path:        "internal/service.go",
-		Category:    provider.CategoryBusinessLogic,
-		Description: "Core service implementation",
-	}
-
-	err := r.RenderFileHeader(file, 3, 10)
-	if err != nil {
-		t.Fatalf("RenderFileHeader() failed: %v", err)
-	}
-
-	output := buf.String()
-
-	if !containsString(output, "[3/10]") {
-		t.Error("output should contain file number")
-	}
-	if !containsString(output, "internal/service.go") {
-		t.Error("output should contain file path")
-	}
-}
-
-func TestFallbackRenderer_RenderFileDiff(t *testing.T) {
-	// Create a temporary git repo
-	dir := t.TempDir()
-
-	// Initialize git repo
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@example.com")
-	runGit(t, dir, "config", "user.name", "Test User")
-
-	// Create initial commit
-	writeFile(t, dir, "test.go", "package main\n")
-	runGit(t, dir, "add", "test.go")
-	runGit(t, dir, "commit", "-m", "Initial commit")
-
-	branch := getCurrentBranch(t, dir)
-
-	// Create a feature branch with changes
-	runGit(t, dir, "checkout", "-b", "feature")
-	writeFile(t, dir, "test.go", "package main\n\nfunc main() {}\n")
-	runGit(t, dir, "add", "test.go")
-	runGit(t, dir, "commit", "-m", "Add main function")
-
-	buf := new(bytes.Buffer)
-	r := newFallbackRenderer(Options{Output: buf, ColorEnabled: false})
-
-	err := r.RenderFileDiff(context.Background(), dir, branch, "test.go", 1, 1)
-	if err != nil {
-		t.Fatalf("RenderFileDiff() failed: %v", err)
-	}
-
-	output := buf.String()
-
-	// Should contain diff markers
-	if !containsString(output, "+func main()") {
-		t.Error("output should contain added line")
-	}
-}
-
 func TestGetCategoryIcon(t *testing.T) {
 	tests := []struct {
 		category string
@@ -279,66 +214,6 @@ func TestFallbackRenderer_RenderOrdering_WithGroups(t *testing.T) {
 	}
 }
 
-func TestFallbackRenderer_RenderFileHeader_WithGroup(t *testing.T) {
-	buf := new(bytes.Buffer)
-	r := newFallbackRenderer(Options{Output: buf, ColorEnabled: false})
-
-	file := &provider.OrderedFile{
-		Path:        "internal/auth/handler.go",
-		Category:    provider.CategoryEntryPoint,
-		Description: "Authentication handler",
-		Group:       "User Auth",
-	}
-
-	err := r.RenderFileHeader(file, 2, 5)
-	if err != nil {
-		t.Fatalf("RenderFileHeader() failed: %v", err)
-	}
-
-	output := buf.String()
-
-	// Check group context is shown
-	if !containsString(output, "[2/5]") {
-		t.Error("output should contain file number")
-	}
-	if !containsString(output, "User Auth ->") {
-		t.Error("output should contain group name with arrow")
-	}
-	if !containsString(output, "internal/auth/handler.go") {
-		t.Error("output should contain file path")
-	}
-}
-
-func TestFallbackRenderer_RenderFileHeader_WithoutGroup(t *testing.T) {
-	buf := new(bytes.Buffer)
-	r := newFallbackRenderer(Options{Output: buf, ColorEnabled: false})
-
-	file := &provider.OrderedFile{
-		Path:        "config.json",
-		Category:    provider.CategoryConfig,
-		Description: "Configuration file",
-		// No Group set
-	}
-
-	err := r.RenderFileHeader(file, 1, 1)
-	if err != nil {
-		t.Fatalf("RenderFileHeader() failed: %v", err)
-	}
-
-	output := buf.String()
-
-	// Check no group context for ungrouped files
-	if containsString(output, "->") {
-		t.Error("output should not contain arrow for ungrouped files")
-	}
-	if !containsString(output, "[1/1]") {
-		t.Error("output should contain file number")
-	}
-	if !containsString(output, "config.json") {
-		t.Error("output should contain file path")
-	}
-}
-
 func TestCountFilesInGroup(t *testing.T) {
 	files := []provider.OrderedFile{
 		{Path: "a.go", Group: "Group A"},
@@ -366,48 +241,6 @@ func TestCountFilesInGroup(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Helper functions
-
-func runGit(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %v failed: %s\n%s", args, err, output)
-	}
-}
-
-func writeFile(t *testing.T, dir, name, content string) {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := exec.Command("sh", "-c", "echo '"+content+"' > "+path).Run(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func getCurrentBranch(t *testing.T, dir string) string {
-	t.Helper()
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = dir
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return trimSpace(string(output))
-}
-
-func trimSpace(s string) string {
-	start := 0
-	for start < len(s) && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
-		start++
-	}
-	end := len(s)
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
-		end--
-	}
-	return s[start:end]
 }
 
 func containsString(s, substr string) bool {

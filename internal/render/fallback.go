@@ -1,10 +1,8 @@
 package render
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 
 	"github.com/mwistrand/graft/internal/provider"
@@ -122,47 +120,6 @@ func countFilesInGroup(files []provider.OrderedFile, groupName string) int {
 		}
 	}
 	return count
-}
-
-// RenderFileHeader displays a header for a file before its diff.
-func (r *fallbackRenderer) RenderFileHeader(file *provider.OrderedFile, fileNum, totalFiles int) error {
-	w := r.output
-
-	r.writeLine(w, "")
-	r.writeDivider(w)
-
-	categoryIcon := getCategoryIcon(file.Category)
-	var header string
-	if file.Group != "" {
-		header = fmt.Sprintf("[%d/%d] %s -> %s %s", fileNum, totalFiles, file.Group, categoryIcon, file.Path)
-	} else {
-		header = fmt.Sprintf("[%d/%d] %s %s", fileNum, totalFiles, categoryIcon, file.Path)
-	}
-	r.writeHighlight(w, header)
-
-	if file.Description != "" {
-		r.writeLine(w, fmt.Sprintf("  %s", file.Description))
-	}
-
-	r.writeDivider(w)
-	r.writeLine(w, "")
-
-	return nil
-}
-
-// RenderFileDiff displays the diff for a single file.
-func (r *fallbackRenderer) RenderFileDiff(ctx context.Context, repoDir, baseRef, filePath string, fileNum, totalFiles int) error {
-	colorFlag := "--color=never"
-	if r.color {
-		colorFlag = "--color=always"
-	}
-
-	cmd := exec.CommandContext(ctx, "git", "diff", colorFlag, baseRef+"...HEAD", "--", filePath)
-	cmd.Dir = repoDir
-	cmd.Stdout = r.output
-	cmd.Stderr = r.output
-
-	return cmd.Run()
 }
 
 func (r *fallbackRenderer) writeLine(w io.Writer, s string) {

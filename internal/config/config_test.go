@@ -30,12 +30,11 @@ func TestConfigSetGet(t *testing.T) {
 		key   string
 		value string
 	}{
-		{"provider", "openai"},
+		{"provider", "copilot"},
 		{"model", "gpt-4"},
 		{"review-model", "gpt-4o"},
 		{"order-model", "gpt-3.5"},
 		{"anthropic-api-key", "sk-ant-test123"},
-		{"openai-api-key", "sk-test456"},
 		{"copilot-base-url", "http://localhost:5000"},
 		{"copilot-api-package", "copilot-api@1.2.3"},
 		{"copilot-acknowledged", "true"},
@@ -63,7 +62,7 @@ func TestConfigSetGet(t *testing.T) {
 			}
 
 			// API keys are masked on Get
-			if tt.key == "anthropic-api-key" || tt.key == "openai-api-key" {
+			if tt.key == "anthropic-api-key" {
 				if got == tt.value {
 					t.Error("expected API key to be masked")
 				}
@@ -114,14 +113,6 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "valid openai config",
-			cfg: &Config{
-				Provider:     "openai",
-				OpenAIAPIKey: "sk-test",
-			},
-			wantErr: false,
-		},
-		{
 			name: "valid copilot config",
 			cfg: &Config{
 				Provider: "copilot",
@@ -129,7 +120,7 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "openai without api key",
+			name: "openai is no longer supported",
 			cfg: &Config{
 				Provider: "openai",
 			},
@@ -165,7 +156,7 @@ func TestConfigEnvOverrides(t *testing.T) {
 	// Save and restore environment
 	envVars := []string{
 		"GRAFT_PROVIDER", "GRAFT_MODEL", "GRAFT_REVIEW_MODEL", "GRAFT_ORDER_MODEL",
-		"ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+		"ANTHROPIC_API_KEY",
 		"COPILOT_BASE_URL", "GRAFT_COPILOT_API_PACKAGE", "GRAFT_COPILOT_ACKNOWLEDGED",
 		"GRAFT_DELTA_PATH", "GRAFT_PROMPT_TIMEOUT", "GRAFT_TESTS_FIRST",
 		"GRAFT_INLINE_TESTS", "GRAFT_NO_DELTA", "GRAFT_NO_ANALYZE", "GRAFT_MAJOR_ONLY",
@@ -186,12 +177,11 @@ func TestConfigEnvOverrides(t *testing.T) {
 	}()
 
 	// Set test environment
-	os.Setenv("GRAFT_PROVIDER", "openai")
+	os.Setenv("GRAFT_PROVIDER", "copilot")
 	os.Setenv("GRAFT_MODEL", "gpt-4-turbo")
 	os.Setenv("GRAFT_REVIEW_MODEL", "gpt-4o")
 	os.Setenv("GRAFT_ORDER_MODEL", "gpt-3.5-turbo")
 	os.Setenv("ANTHROPIC_API_KEY", "env-anthropic-key")
-	os.Setenv("OPENAI_API_KEY", "env-openai-key")
 	os.Setenv("COPILOT_BASE_URL", "http://localhost:5000")
 	os.Setenv("GRAFT_COPILOT_API_PACKAGE", "copilot-api@9.9.9")
 	os.Setenv("GRAFT_COPILOT_ACKNOWLEDGED", "yes")
@@ -209,8 +199,8 @@ func TestConfigEnvOverrides(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.applyEnvOverrides()
 
-	if cfg.Provider != "openai" {
-		t.Errorf("Provider = %q, want %q", cfg.Provider, "openai")
+	if cfg.Provider != "copilot" {
+		t.Errorf("Provider = %q, want %q", cfg.Provider, "copilot")
 	}
 	if cfg.Model != "gpt-4-turbo" {
 		t.Errorf("Model = %q, want %q", cfg.Model, "gpt-4-turbo")
@@ -223,9 +213,6 @@ func TestConfigEnvOverrides(t *testing.T) {
 	}
 	if cfg.AnthropicAPIKey != "env-anthropic-key" {
 		t.Errorf("AnthropicAPIKey = %q, want %q", cfg.AnthropicAPIKey, "env-anthropic-key")
-	}
-	if cfg.OpenAIAPIKey != "env-openai-key" {
-		t.Errorf("OpenAIAPIKey = %q, want %q", cfg.OpenAIAPIKey, "env-openai-key")
 	}
 	if cfg.CopilotBaseURL != "http://localhost:5000" {
 		t.Errorf("CopilotBaseURL = %q, want %q", cfg.CopilotBaseURL, "http://localhost:5000")
@@ -325,6 +312,87 @@ func TestConfigSaveLoad(t *testing.T) {
 	}
 	if loaded.DeltaPath != cfg.DeltaPath {
 		t.Errorf("DeltaPath = %q, want %q", loaded.DeltaPath, cfg.DeltaPath)
+	}
+}
+
+// TestLoadFromExplicitPathMissing verifies that LoadFrom errors when an
+// explicitly named path does not exist — callers asked for a specific file
+// and silent fallback would mask the mistake.
+func TestLoadFromExplicitPathMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	missing := filepath.Join(tmpDir, "does-not-exist.json")
+
+	if _, err := LoadFrom(missing); err == nil {
+		t.Errorf("LoadFrom(%q) succeeded; want error for missing explicit path", missing)
+	}
+}
+
+// TestLoadFromDefaultPathMissing verifies that LoadFrom("") silently returns
+// the default config when the default config file is absent (first-run
+// behavior).
+func TestLoadFromDefaultPathMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	for _, v := range []string{"GRAFT_PROVIDER", "GRAFT_MODEL", "ANTHROPIC_API_KEY"} {
+		os.Unsetenv(v)
+	}
+
+	cfg, err := LoadFrom("")
+	if err != nil {
+		t.Fatalf("LoadFrom(\"\") with missing default config returned error: %v", err)
+	}
+	if cfg.Provider != DefaultProvider {
+		t.Errorf("Provider = %q, want default %q", cfg.Provider, DefaultProvider)
+	}
+}
+
+// TestLoadFromExplicitPathExists verifies that LoadFrom reads from a
+// non-default path when one is provided.
+func TestLoadFromExplicitPathExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "alt.json")
+
+	cfg := &Config{
+		Provider:        "claude",
+		Model:           "claude-sonnet-4-6",
+		AnthropicAPIKey: "sk-ant-explicit",
+	}
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatalf("SaveTo(%q) failed: %v", path, err)
+	}
+
+	for _, v := range []string{"GRAFT_PROVIDER", "GRAFT_MODEL", "ANTHROPIC_API_KEY"} {
+		os.Unsetenv(v)
+	}
+
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom(%q) failed: %v", path, err)
+	}
+	if loaded.Model != cfg.Model {
+		t.Errorf("Model = %q, want %q", loaded.Model, cfg.Model)
+	}
+	if loaded.AnthropicAPIKey != cfg.AnthropicAPIKey {
+		t.Errorf("AnthropicAPIKey = %q, want %q", loaded.AnthropicAPIKey, cfg.AnthropicAPIKey)
+	}
+}
+
+// TestSaveToExplicitPathCreatesParents verifies SaveTo writes to a non-default
+// path and creates any missing parent directories.
+func TestSaveToExplicitPathCreatesParents(t *testing.T) {
+	tmpDir := t.TempDir()
+	nested := filepath.Join(tmpDir, "a", "b", "c", "graft.json")
+
+	cfg := &Config{Provider: "claude", AnthropicAPIKey: "sk-ant-x"}
+	if err := cfg.SaveTo(nested); err != nil {
+		t.Fatalf("SaveTo(%q) failed: %v", nested, err)
+	}
+
+	if _, err := os.Stat(nested); err != nil {
+		t.Fatalf("expected file at %q, stat error: %v", nested, err)
 	}
 }
 

@@ -68,32 +68,6 @@ type reviewRunner struct {
 	cacheKey   string
 }
 
-// newReviewRunner creates a runner with CLI flags resolved against config.
-func newReviewRunner(cfg *config.Config, baseRef string) *reviewRunner {
-	return &reviewRunner{
-		cfg:              cfg,
-		baseRef:          baseRef,
-		testsFirst:       testsFirst || cfg.TestsFirst,
-		inlineTests:      inlineTests || cfg.InlineTests,
-		noDelta:          noDelta || cfg.NoDelta,
-		noAnalyze:        noAnalyze || cfg.NoAnalyze,
-		majorOnly:        majorOnly || cfg.MajorOnly,
-		reviewCategories: firstNonEmpty(reviewCategories, cfg.ReviewCategories),
-		reviewSeverity:   firstNonEmpty(reviewSeverity, cfg.ReviewSeverity),
-		aiReviewFlag:     aiReview,
-		promptTimeoutMin: resolveTimeout(promptTimeout, cfg.PromptTimeout),
-		providerName:     providerName,
-		modelName:        modelName,
-		reviewModelName:  firstNonEmpty(reviewModelName, cfg.ReviewModel),
-		orderModelName:   firstNonEmpty(orderModelName, cfg.OrderModel),
-		selectModel:      selectModel,
-		summarize:        summarize || cfg.Summarize,
-		skipOrdering:     skipOrdering,
-		doQuickReview:    quickReview,
-		refresh:          refresh,
-	}
-}
-
 // firstNonEmpty returns the first non-empty string, or empty if all are empty.
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {

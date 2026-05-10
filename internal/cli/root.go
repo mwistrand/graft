@@ -47,7 +47,7 @@ Example:
 		}
 
 		var err error
-		cfg, err = config.Load()
+		cfg, err = config.LoadFrom(cfgFile)
 		if err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}

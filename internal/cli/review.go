@@ -7,27 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Command flags bound by Cobra; resolved into a reviewRunner at startup.
-var (
-	summarize        bool
-	skipOrdering     bool
-	providerName     string
-	modelName        string
-	reviewModelName  string
-	orderModelName   string
-	selectModel      bool
-	noDelta          bool
-	testsFirst       bool
-	inlineTests      bool
-	refresh          bool
-	noAnalyze        bool
-	aiReview         string
-	promptTimeout    int
-	reviewCategories string
-	reviewSeverity   string
-	majorOnly        bool
-	quickReview      bool
-)
+// reviewCmdFlags carries the flag values for `graft review`. Each command owns
+// its own reviewFlags instance so cobra binds to a stable address but values
+// do not bleed between subcommands.
+var reviewCmdFlags reviewFlags
 
 var reviewCmd = &cobra.Command{
 	Use:   "review <base-branch|pr-url>",
@@ -55,26 +38,7 @@ Enterprise GitHub instances are also supported.`,
 }
 
 func init() {
-	reviewCmd.Flags().BoolVar(&summarize, "summarize", false, "Include AI summary of changes")
-	reviewCmd.Flags().BoolVar(&skipOrdering, "no-order", false, "Skip AI ordering, use default order")
-	reviewCmd.Flags().StringVar(&providerName, "provider", "", "AI provider to use (default from config)")
-	reviewCmd.Flags().StringVar(&modelName, "model", "", "Model to use (default from config)")
-	reviewCmd.Flags().StringVar(&reviewModelName, "review-model", "", "Model for review tasks (review, quick review)")
-	reviewCmd.Flags().StringVar(&orderModelName, "order-model", "", "Model for ordering and summary tasks")
-	reviewCmd.Flags().BoolVar(&selectModel, "select-model", false, "Force interactive model selection")
-	reviewCmd.Flags().BoolVar(&noDelta, "no-delta", false, "Disable Delta rendering")
-	reviewCmd.Flags().BoolVar(&testsFirst, "tests-first", false, "Show test files before implementation")
-	reviewCmd.Flags().BoolVar(&inlineTests, "inline-tests", false, "Show test files alongside their implementation")
-	reviewCmd.Flags().BoolVar(&refresh, "refresh", false, "Re-analyze repository and refresh AI cache")
-	reviewCmd.Flags().BoolVar(&noAnalyze, "no-analyze", false, "Skip repository analysis")
-	reviewCmd.Flags().StringVar(&aiReview, "ai-review", "", "Generate detailed AI code review (optionally specify output file)")
-	reviewCmd.Flags().Lookup("ai-review").NoOptDefVal = "true"
-	reviewCmd.Flags().IntVar(&promptTimeout, "prompt-timeout", -1, "Timeout in minutes for interactive prompts (0 = no timeout, default: 30)")
-	reviewCmd.Flags().StringVar(&reviewCategories, "review-categories", "", "Focus AI review on specific categories (comma-separated: design,functionality,complexity,tests,naming,comments,style,documentation)")
-	reviewCmd.Flags().StringVar(&reviewSeverity, "review-severity", "", "Filter review output by minimum severity (critical, suggestion, nit)")
-	reviewCmd.Flags().BoolVar(&majorOnly, "major-only", false, "Only review core and supporting groups, skip minor changes")
-	reviewCmd.Flags().BoolVar(&quickReview, "quick", false, "Perform a quick initial assessment before full review")
-
+	reviewCmdFlags.bind(reviewCmd)
 	rootCmd.AddCommand(reviewCmd)
 }
 
@@ -89,6 +53,6 @@ func runReview(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("configuration not loaded")
 	}
 
-	runner := newReviewRunner(cfg, args[0])
+	runner := reviewCmdFlags.toRunner(cfg, args[0], false)
 	return runner.run(ctx)
 }

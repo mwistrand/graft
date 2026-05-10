@@ -979,20 +979,18 @@ func TestValidateModels(t *testing.T) {
 	}
 }
 
-func TestNewReviewRunner_ResolvesTaskModels(t *testing.T) {
+func TestReviewFlags_ResolvesTaskModels(t *testing.T) {
 	// CLI flags take precedence over config
-	reviewModelName = "flag-review"
-	orderModelName = "flag-order"
-	defer func() {
-		reviewModelName = ""
-		orderModelName = ""
-	}()
+	flags := reviewFlags{
+		reviewModelName: "flag-review",
+		orderModelName:  "flag-order",
+	}
 
 	cfg := &config.Config{
 		ReviewModel: "config-review",
 		OrderModel:  "config-order",
 	}
-	r := newReviewRunner(cfg, "main")
+	r := flags.toRunner(cfg, "main", false)
 	if r.reviewModelName != "flag-review" {
 		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "flag-review")
 	}
@@ -1001,16 +999,14 @@ func TestNewReviewRunner_ResolvesTaskModels(t *testing.T) {
 	}
 }
 
-func TestNewReviewRunner_FallsBackToConfig(t *testing.T) {
-	// When no CLI flags, config values are used
-	reviewModelName = ""
-	orderModelName = ""
+func TestReviewFlags_FallsBackToConfig(t *testing.T) {
+	flags := reviewFlags{} // no CLI overrides
 
 	cfg := &config.Config{
 		ReviewModel: "config-review",
 		OrderModel:  "config-order",
 	}
-	r := newReviewRunner(cfg, "main")
+	r := flags.toRunner(cfg, "main", false)
 	if r.reviewModelName != "config-review" {
 		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "config-review")
 	}
@@ -1019,23 +1015,19 @@ func TestNewReviewRunner_FallsBackToConfig(t *testing.T) {
 	}
 }
 
-func TestNewReviewRunner_ResolvesSummarizeFromConfig(t *testing.T) {
-	summarize = false
-	defer func() { summarize = false }()
-
+func TestReviewFlags_ResolvesSummarizeFromConfig(t *testing.T) {
+	flags := reviewFlags{summarize: false}
 	cfg := &config.Config{Summarize: true}
-	r := newReviewRunner(cfg, "main")
+	r := flags.toRunner(cfg, "main", false)
 	if !r.summarize {
 		t.Error("expected summarize from config when CLI flag is false")
 	}
 }
 
-func TestNewReviewRunner_SummarizeDefaultsFalse(t *testing.T) {
-	summarize = false
-	defer func() { summarize = false }()
-
+func TestReviewFlags_SummarizeDefaultsFalse(t *testing.T) {
+	flags := reviewFlags{summarize: false}
 	cfg := &config.Config{}
-	r := newReviewRunner(cfg, "main")
+	r := flags.toRunner(cfg, "main", false)
 	if r.summarize {
 		t.Error("expected summarize to default to false")
 	}
@@ -1072,32 +1064,28 @@ func TestResolveReviewModel(t *testing.T) {
 	}
 }
 
-func TestNewScanRunner_SetsFullCodebase(t *testing.T) {
+func TestScanFlags_SetsFullCodebase(t *testing.T) {
+	flags := reviewFlags{}
 	cfg := &config.Config{}
-	r := newScanRunner(cfg)
+	r := flags.toRunner(cfg, "", true)
 	if !r.fullCodebase {
 		t.Error("expected fullCodebase to be true")
 	}
 }
 
-func TestNewScanRunner_ResolvesFlags(t *testing.T) {
-	// Set scan-specific flags
-	scanReviewModelName = "scan-review"
-	scanOrderModelName = "scan-order"
-	scanTestsFirst = true
-	scanMajorOnly = true
-	defer func() {
-		scanReviewModelName = ""
-		scanOrderModelName = ""
-		scanTestsFirst = false
-		scanMajorOnly = false
-	}()
+func TestScanFlags_ResolvesFlags(t *testing.T) {
+	flags := reviewFlags{
+		reviewModelName: "scan-review",
+		orderModelName:  "scan-order",
+		testsFirst:      true,
+		majorOnly:       true,
+	}
 
 	cfg := &config.Config{
 		ReviewModel: "config-review",
 		OrderModel:  "config-order",
 	}
-	r := newScanRunner(cfg)
+	r := flags.toRunner(cfg, "", true)
 
 	if r.reviewModelName != "scan-review" {
 		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "scan-review")
@@ -1113,13 +1101,8 @@ func TestNewScanRunner_ResolvesFlags(t *testing.T) {
 	}
 }
 
-func TestNewScanRunner_FallsBackToConfig(t *testing.T) {
-	scanReviewModelName = ""
-	scanOrderModelName = ""
-	scanTestsFirst = false
-	scanMajorOnly = false
-	scanSummarize = false
-
+func TestScanFlags_FallsBackToConfig(t *testing.T) {
+	flags := reviewFlags{}
 	cfg := &config.Config{
 		ReviewModel: "config-review",
 		OrderModel:  "config-order",
@@ -1127,7 +1110,7 @@ func TestNewScanRunner_FallsBackToConfig(t *testing.T) {
 		MajorOnly:   true,
 		Summarize:   true,
 	}
-	r := newScanRunner(cfg)
+	r := flags.toRunner(cfg, "", true)
 
 	if r.reviewModelName != "config-review" {
 		t.Errorf("reviewModelName = %q, want %q", r.reviewModelName, "config-review")
@@ -1149,20 +1132,12 @@ func TestNewScanRunner_FallsBackToConfig(t *testing.T) {
 func TestScanRunner_ConfigModelUsedWhenNoFlags(t *testing.T) {
 	// Simulates "graft scan --ai-review" with only cfg.Model set.
 	// Verifies that initAIProvider would pass cfg.Model to initProvider.
-	scanModelName = ""
-	scanReviewModelName = ""
-	scanOrderModelName = ""
-	defer func() {
-		scanModelName = ""
-		scanReviewModelName = ""
-		scanOrderModelName = ""
-	}()
-
+	flags := reviewFlags{}
 	cfg := &config.Config{
 		Model:    "gpt-5",
 		Provider: "copilot",
 	}
-	r := newScanRunner(cfg)
+	r := flags.toRunner(cfg, "", true)
 	r.aiReviewFlag = "true"
 
 	// Reproduce the logic from initAIProvider

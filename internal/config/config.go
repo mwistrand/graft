@@ -29,9 +29,6 @@ type Config struct {
 	// AnthropicAPIKey is the API key for the Anthropic/Claude provider.
 	AnthropicAPIKey string `json:"anthropic_api_key,omitempty"`
 
-	// OpenAIAPIKey is the API key for the OpenAI provider.
-	OpenAIAPIKey string `json:"openai_api_key,omitempty"`
-
 	// CopilotBaseURL is the URL of the copilot-api proxy server.
 	CopilotBaseURL string `json:"copilot_base_url,omitempty"`
 
@@ -88,20 +85,40 @@ type Config struct {
 // Load reads configuration from the default config file and environment variables.
 // Environment variables take precedence over file configuration.
 func Load() (*Config, error) {
+	return LoadFrom("")
+}
+
+// LoadFrom reads configuration from the given path (or the default path when
+// path is empty). Environment variables take precedence over file values.
+//
+// When path is non-empty, a missing file is an error — the caller asked for a
+// specific config and should know if it isn't there. When path is empty, a
+// missing default config file is silently ignored (first-run behavior).
+func LoadFrom(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
-	// Try to load from config file
-	configPath, err := ConfigPath()
-	if err != nil {
-		return nil, fmt.Errorf("determining config path: %w", err)
+	configPath := path
+	if configPath == "" {
+		var err error
+		configPath, err = ConfigPath()
+		if err != nil {
+			return nil, fmt.Errorf("determining config path: %w", err)
+		}
 	}
 
-	if data, err := os.ReadFile(configPath); err == nil {
+	data, err := os.ReadFile(configPath)
+	switch {
+	case err == nil:
 		if err := json.Unmarshal(data, cfg); err != nil {
-			return nil, fmt.Errorf("parsing config file: %w", err)
+			return nil, fmt.Errorf("parsing config file %q: %w", configPath, err)
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("reading config file: %w", err)
+	case errors.Is(err, os.ErrNotExist):
+		if path != "" {
+			return nil, fmt.Errorf("config file %q not found", configPath)
+		}
+		// Default-path miss is OK — first run.
+	default:
+		return nil, fmt.Errorf("reading config file %q: %w", configPath, err)
 	}
 
 	// Environment variables override file configuration
@@ -112,9 +129,19 @@ func Load() (*Config, error) {
 
 // Save writes the configuration to the default config file.
 func (c *Config) Save() error {
-	configPath, err := ConfigPath()
-	if err != nil {
-		return fmt.Errorf("determining config path: %w", err)
+	return c.SaveTo("")
+}
+
+// SaveTo writes the configuration to the given path (or the default path when
+// path is empty). The parent directory is created if missing.
+func (c *Config) SaveTo(path string) error {
+	configPath := path
+	if configPath == "" {
+		var err error
+		configPath, err = ConfigPath()
+		if err != nil {
+			return fmt.Errorf("determining config path: %w", err)
+		}
 	}
 
 	// Ensure config directory exists
@@ -129,7 +156,7 @@ func (c *Config) Save() error {
 	}
 
 	if err := os.WriteFile(configPath, data, 0o600); err != nil {
-		return fmt.Errorf("writing config file: %w", err)
+		return fmt.Errorf("writing config file %q: %w", configPath, err)
 	}
 
 	return nil
@@ -154,10 +181,6 @@ func (c *Config) Validate() error {
 	case "copilot":
 		// Copilot requires the copilot-api proxy to be running, no API key needed
 		return nil
-	case "openai":
-		if c.OpenAIAPIKey == "" {
-			return errors.New("openai API key not set; run 'graft config set openai-api-key <key>' or set OPENAI_API_KEY")
-		}
 	default:
 		return fmt.Errorf("unknown provider %q; available providers: claude, copilot", c.Provider)
 	}
@@ -180,9 +203,6 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("ANTHROPIC_API_KEY"); v != "" {
 		c.AnthropicAPIKey = v
-	}
-	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
-		c.OpenAIAPIKey = v
 	}
 	if v := os.Getenv("COPILOT_BASE_URL"); v != "" {
 		c.CopilotBaseURL = v
@@ -248,8 +268,6 @@ func (c *Config) Set(key, value string) error {
 		c.OrderModel = value
 	case "anthropic-api-key":
 		c.AnthropicAPIKey = value
-	case "openai-api-key":
-		c.OpenAIAPIKey = value
 	case "copilot-base-url":
 		c.CopilotBaseURL = value
 	case "copilot-api-package":
@@ -305,11 +323,6 @@ func (c *Config) Get(key string) (string, error) {
 			return "", nil
 		}
 		return maskAPIKey(c.AnthropicAPIKey), nil
-	case "openai-api-key":
-		if c.OpenAIAPIKey == "" {
-			return "", nil
-		}
-		return maskAPIKey(c.OpenAIAPIKey), nil
 	case "copilot-base-url":
 		return c.CopilotBaseURL, nil
 	case "copilot-api-package":
